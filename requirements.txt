@@ -1,0 +1,10 @@
+# Exact pip-compatible fallback for the uv-locked environment.
+# Python version: 3.11.x (the repository pins 3.11.15 in .python-version).
+starlette==1.0.0
+uvicorn==0.46.0
+python-multipart==0.0.26
+numpy==2.3.5
+h5py==3.16.0
+pyedflib==0.1.42
+scipy==1.17.1
+matplotlib==3.10.8

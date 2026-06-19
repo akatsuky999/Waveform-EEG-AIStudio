@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Waveform — neural signal explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/stage.css" />
+  <link rel="stylesheet" href="css/sidebar.css" />
+  <link rel="stylesheet" href="/agent/agent.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12h3l3-8 4 16 3-10 2 5h5"/>
+          </svg>
+        </span>
+        <span class="word">Waveform</span>
+      </div>
+      <div class="file-meta hidden" id="fileMeta">
+        <span class="chip" id="cFile">—</span>
+        <span class="chip" id="cKind">—</span>
+        <span class="chip"><i id="cChans">—</i> channels</span>
+        <span class="chip"><i id="cFs">—</i> Hz</span>
+        <span class="chip"><i id="cDur">—</i> s</span>
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="workspace-sidebar" id="workspaceSidebar" aria-label="Workspace sidebar">
+        <nav class="activity-bar" role="tablist" aria-label="Sidebar modules">
+          <button class="activity-button active" type="button" data-sidebar-module="explorer" role="tab" aria-selected="true" aria-controls="sidebarExplorer" title="Explorer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l1.8 2h9.2v10h-17z"/><path d="M3.5 6.5V4h6l1.8 2.5"/></svg>
+            <span class="sr-only">Explorer</span>
+          </button>
+          <button class="activity-button" type="button" data-sidebar-module="controls" role="tab" aria-selected="false" aria-controls="sidebarControls" title="Controls">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 4v6M7 14v6"/><circle cx="13" cy="7" r="2"/><circle cx="7" cy="17" r="2"/></svg>
+            <span class="sr-only">Controls</span>
+          </button>
+          <button class="activity-button" type="button" data-sidebar-module="export" role="tab" aria-selected="false" aria-controls="sidebarExport" title="Export">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5"/><path d="M5 14v6h14v-6"/></svg>
+            <span class="sr-only">Export</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-panel" id="sidebarPanel">
+          <section class="sidebar-view explorer-view active" id="sidebarExplorer" data-sidebar-panel="explorer" role="tabpanel" aria-label="Explorer">
+            <header class="sidebar-view-head">
+              <div>
+                <span class="sidebar-eyebrow">Explorer</span>
+                <strong id="projectName">No folder open</strong>
+              </div>
+              <div class="explorer-actions">
+                <button type="button" id="openFileBtn" title="Open single EEG file" aria-label="Open single EEG file">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 2.5h6l4 4v9H4z"/><path d="M10 2.5v4h4M9 9v4M7 11h4"/></svg>
+                </button>
+                <button type="button" id="openFolderBtn" title="Open project folder" aria-label="Open project folder">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2.5 5h5l1.4 1.7h6.6v7.8h-13z"/><path d="M12.5 2.5v4M10.5 4.5h4"/></svg>
+                </button>
+                <button type="button" id="refreshProjectBtn" title="Refresh project" aria-label="Refresh project">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M14.5 6.5A6 6 0 1 0 15 11"/><path d="M11.5 3.5h3.5V7"/></svg>
+                </button>
+                <button type="button" id="collapseProjectBtn" title="Collapse all" aria-label="Collapse all folders">
+                  <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m5 3 4 4 4-4M5 15l4-4 4 4"/></svg>
+                </button>
+              </div>
+            </header>
+            <div class="explorer-status" id="explorerStatus" aria-live="polite"></div>
+            <button class="reconnect-project hidden" type="button" id="reconnectProjectBtn">Reconnect folder</button>
+            <div class="explorer-empty" id="explorerEmpty">
+              <div class="explorer-empty-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="M4 9h10l2.8 3H28v14H4z"/><path d="M16 5v8M12 9h8"/></svg>
+              </div>
+              <b>Open a project folder</b>
+              <p>Browse recordings as a project, then double-click an EEG file to load it.</p>
+              <div class="explorer-empty-actions">
+                <button class="wide-btn" type="button" id="explorerOpenFile">Open File</button>
+                <button class="wide-btn ghost" type="button" id="explorerOpenFolder">Open Folder</button>
+              </div>
+              <span>.edf · .bdf · .h5 · .hdf5</span>
+            </div>
+            <div class="project-tree hidden" id="projectTree" role="tree"></div>
+          </section>
+
+          <section class="sidebar-view controls-view" id="sidebarControls" data-sidebar-panel="controls" role="tabpanel" aria-label="Controls">
+            <header class="sidebar-view-head controls-head">
+              <div><span class="sidebar-eyebrow">Controls</span><strong>Signal workspace</strong></div>
+              <div class="sidebar-head-actions">
+                <button type="button" id="resetBtn" title="Reset view (0)">Reset</button>
+                <button type="button" id="analysisBtn" title="Toggle analysis">Analysis</button>
+              </div>
+            </header>
+            <div class="controls-empty" id="controlsEmpty">Load an EEG file to enable signal controls.</div>
+            <div class="rail controls-scroll is-disabled" id="rail">
+        <section class="ctl-group">
+          <h2>Display</h2>
+          <div class="ctrl">
+            <div class="row"><label>Amplitude gain</label><span class="val" id="gainVal">1.0×</span></div>
+            <input type="range" id="gain" min="-2" max="3" step="0.01" value="0" />
+          </div>
+          <div class="ctrl">
+            <div class="row"><label>Row height</label><span class="val" id="rowVal">46 px</span></div>
+            <input type="range" id="row" min="20" max="130" step="1" value="46" />
+          </div>
+          <label class="mini-field full">Montage
+            <select id="montageMode">
+              <option value="raw">Original channels</option>
+              <option value="bipolar">Bipolar sequential</option>
+              <option value="car">Common average reference</option>
+              <option value="group-car">Group average reference</option>
+              <option value="local">Local neighbor reference</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="ctl-group">
+          <h2>Filters</h2>
+          <div class="filter-presets" id="filterPresets">
+            <button data-low="1" data-high="70">Review 1–70</button>
+            <button data-low="1" data-high="40">Seizure 1–40</button>
+            <button data-low="0.3" data-high="35">Sleep 0.3–35</button>
+            <button data-low="80" data-high="250">HFO 80–250</button>
+            <button data-low="0" data-high="0" data-notch="off">Off</button>
+          </div>
+          <canvas class="filter-response" id="filterResponse" title="Filter frequency response"></canvas>
+          <div class="grid-2">
+            <label class="mini-field">Low cut <input type="number" id="filterLow" min="0" max="120" step="0.5" placeholder="0" /></label>
+            <label class="mini-field">High cut <input type="number" id="filterHigh" min="0" max="128" step="0.5" placeholder="off" /></label>
+          </div>
+          <label class="mini-field full">Notch
+            <select id="filterNotch">
+              <option value="off">Off</option>
+              <option value="50">50 Hz + harmonics</option>
+              <option value="60">60 Hz + harmonics</option>
+            </select>
+          </label>
+          <p class="hint">Zero-phase cosine-tapered band-pass + harmonic notch, applied before differencing and normalization.</p>
+        </section>
+
+        <section class="ctl-group">
+          <h2>Normalization</h2>
+          <div class="dropdown" id="normDropdown">
+            <button class="dd-trigger" id="normTrigger" aria-haspopup="listbox" aria-expanded="false">
+              <span id="normCurrent">Raw</span>
+              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="dd-menu" id="normMenu" role="listbox">
+              <button class="dd-item" data-m="none" role="option">Raw</button>
+              <button class="dd-item" data-m="zscore" role="option">Z-score</button>
+              <button class="dd-item" data-m="minmax" role="option">Min–Max</button>
+              <button class="dd-item" data-m="robust" role="option">Robust</button>
+              <button class="dd-item" data-m="globalz" role="option">Global Z</button>
+              <button class="dd-item" data-m="l2" role="option">Unit norm</button>
+            </div>
+          </div>
+          <div class="formula-card" id="formulaCard"></div>
+          <div class="norm-params" id="normParams"></div>
+          <p class="hint" id="normHint"></p>
+        </section>
+
+        <section class="ctl-group">
+          <h2>Differencing</h2>
+          <div class="segmented" id="diffSeg">
+            <button data-n="0" class="active">f(t)</button>
+            <button data-n="1">Δ¹</button>
+            <button data-n="2">Δ²</button>
+            <button data-n="3">Δ³</button>
+            <button data-n="4">Δ⁴</button>
+          </div>
+          <p class="hint" id="diffHint"></p>
+        </section>
+
+        <section class="ctl-group">
+          <h2>Interaction</h2>
+          <label class="switch-row">
+            <span>Measure drag</span>
+            <input type="checkbox" id="measureToggle" />
+          </label>
+          <label class="switch-row">
+            <span>Drag events</span>
+            <input type="checkbox" id="markerToggle" />
+          </label>
+          <button class="wide-btn" id="addMarkerBtn">Add point at center</button>
+        </section>
+
+        <section class="ctl-group analysis-panel hidden" id="analysisPanel">
+          <div class="analysis-head">
+            <div>
+              <b id="analysisTitle">Channel</b>
+              <span id="analysisSub">Spectrum</span>
+            </div>
+            <div class="seg-mini" id="analysisTabs">
+              <button data-mode="spectrum" class="active">FFT</button>
+              <button data-mode="spectrogram">Time-freq</button>
+            </div>
+            <button class="panel-close" id="analysisClose" title="Hide analysis panel">×</button>
+          </div>
+          <canvas id="analysisCanvas"></canvas>
+          <div class="band-bars" id="bandBars"></div>
+          <div class="measure-grid" id="measureStats"></div>
+        </section>
+
+        <section class="ctl-group">
+          <h2>Channel Tools</h2>
+          <input class="search-input" type="search" id="channelSearch" placeholder="Search channel or group" />
+          <label class="mini-field full">Sort
+            <select id="channelSort">
+              <option value="file">File order</option>
+              <option value="group">Group</option>
+              <option value="freq">Dominant frequency</option>
+            </select>
+          </label>
+          <div class="selected-card" id="selectedCard">No channel selected</div>
+          <div class="action-row">
+            <button id="soloBtn">Solo</button>
+            <button id="pinBtn">Pin</button>
+            <button id="hideBtn">Hide</button>
+          </div>
+          <button class="wide-btn ghost" id="clearFocusBtn">Clear focus</button>
+        </section>
+
+        <section class="ctl-group">
+          <h2>Channels <span class="muted" id="chCount"></span></h2>
+          <div class="legend" id="legend"></div>
+        </section>
+
+        <section class="ctl-group">
+          <h2>Events</h2>
+          <div class="marker-list" id="markerList"></div>
+        </section>
+
+        <section class="ctl-group meta-group">
+          <h2>File</h2>
+          <div class="attr-list" id="attrList"></div>
+        </section>
+            </div>
+          </section>
+
+          <section class="sidebar-view export-view" id="sidebarExport" data-sidebar-panel="export" role="tabpanel" aria-label="Export">
+            <header class="sidebar-view-head">
+              <div><span class="sidebar-eyebrow">Export</span><strong>Output workbench</strong></div>
+            </header>
+            <div class="controls-empty show" id="exportEmpty">Load an EEG file to enable exports.</div>
+            <div class="export-scroll is-disabled" id="exportPanel">
+              <section class="export-group">
+                <h2>Quick Export</h2>
+                <p>Current visible data and versioned point/interval annotations.</p>
+                <div class="export-buttons two">
+                  <button id="csvBtn">Visible CSV</button>
+                  <button id="eventsBtn">Events JSON</button>
+                </div>
+              </section>
+
+              <section class="export-group">
+                <h2>Image Dimensions</h2>
+                <p>Exact output pixels shared by viewer, training, and batch images.</p>
+                <div class="export-grid">
+                  <label>Width (px)<input type="number" id="imageWidth" min="320" max="8192" step="1" value="1600" /></label>
+                  <label>Height (px)<input type="number" id="imageHeight" min="240" max="8192" step="1" value="1200" /></label>
+                </div>
+                <label class="check-row dimension-option"><input type="checkbox" id="imageRatioLock" /> Lock current ratio <span id="imageRatioLabel">4:3</span></label>
+                <label class="check-row dimension-option"><input type="checkbox" id="imageAutoHeight" /> Auto height by channel count</label>
+                <div class="export-grid auto-height-settings hidden" id="imageAutoHeightSettings">
+                  <label>Channel row (px)<input type="number" id="imageRowHeight" min="16" max="96" step="1" value="32" /></label>
+                </div>
+                <div class="export-grid one image-label-settings">
+                  <label>Channel label (px)<input type="number" id="imageLabelSize" min="6" max="32" step="1" value="12" /></label>
+                </div>
+                <p class="dimension-summary" id="imageDimensionSummary">Output · 1600 × 1200 px · 4:3 · labels 12 px</p>
+              </section>
+
+              <section class="export-group">
+                <h2>Viewer Image</h2>
+                <div class="export-grid">
+                  <label>Background<select id="viewerBgMode"><option value="transparent">Transparent</option><option value="theme">Current theme</option><option value="white">White</option><option value="custom">Custom</option></select></label>
+                  <label class="color-field hidden" id="viewerCustomBgWrap">Color<input type="color" id="viewerCustomBg" value="#ffffff" /></label>
+                </div>
+                <label class="check-row"><input type="checkbox" id="viewerLabels" checked /> Channel labels</label>
+                <label class="check-row"><input type="checkbox" id="viewerEvents" checked /> Event track</label>
+                <div class="export-buttons two">
+                  <button id="viewerPreviewBtn">Preview</button>
+                  <button class="export-accent" id="viewerImageBtn">Export PNG</button>
+                </div>
+              </section>
+
+              <section class="export-group">
+                <h2>Training Image</h2>
+                <p>Clean waveform-only rendering for image recognition. Visual cleanup does not alter the selected signal source.</p>
+                <div class="export-grid">
+                  <label>Signal<select id="trainingSource"><option value="processed" selected>Processed</option><option value="raw">Raw</option></select></label>
+                  <label>Palette<select id="trainingPalette"><option value="cycle" selected>Cycle colors</option><option value="black">All black</option><option value="mono">Custom mono</option><option value="current">Current colors</option></select></label>
+                  <label class="color-field hidden" id="trainingMonoWrap">Line<input type="color" id="trainingMono" value="#111111" /></label>
+                </div>
+                <label class="check-row"><input type="checkbox" id="trainingLabels" /> Channel labels</label>
+                <label class="check-row"><input type="checkbox" id="trainingEvents" /> Event annotations</label>
+                <div class="export-buttons two">
+                  <button id="trainingPreviewBtn">Preview current</button>
+                  <button class="export-accent" id="trainingCurrentBtn">Export current</button>
+                </div>
+                <div class="export-buttons">
+                  <button id="trainingBatchToggle">Batch settings</button>
+                </div>
+                <div class="batch-settings hidden" id="trainingBatchSettings">
+                  <div class="export-grid">
+                    <label>Window (s)<input type="number" id="batchWindow" min="0.1" step="0.1" value="10" /></label>
+                    <label>Step (s)<input type="number" id="batchStep" min="0.1" step="0.1" value="10" /></label>
+                  </div>
+                  <label class="check-row"><input type="checkbox" id="batchPartial" checked /> Include final partial window</label>
+                  <button class="export-primary" id="trainingBatchBtn">Export full recording ZIP</button>
+                </div>
+              </section>
+
+              <section class="export-group">
+                <h2>Data Export</h2>
+                <div class="export-grid">
+                  <label>Format<select id="dataFormat"><option value="h5">H5</option><option value="edf">EDF+</option></select></label>
+                  <label>Range<select id="dataRange"><option value="full">Full recording</option><option value="current">Current window</option></select></label>
+                  <label>Channels<select id="dataChannels"><option value="all">All channels</option><option value="visible">Visible channels</option></select></label>
+                  <label>Signal<select id="dataSource"><option value="raw">Raw</option><option value="processed">Processed</option></select></label>
+                </div>
+                <p class="export-note" id="dataExportNote">H5 stores structured events and complete processing provenance.</p>
+                <button class="export-primary" id="dataExportBtn">Export H5</button>
+              </section>
+              <div class="export-status" id="exportStatus" role="status" aria-live="polite"></div>
+            </div>
+          </section>
+        </div>
+        <div class="sidebar-resizer" id="sidebarResizer" title="Drag to resize sidebar"></div>
+      </aside>
+
+      <div class="stage-col" id="stageCol">
+        <div class="event-track hidden" id="eventTrackWrap">
+          <canvas id="eventTrackCanvas" aria-label="Event annotation track"></canvas>
+          <div class="event-track-tooltip" id="eventTrackTooltip"></div>
+        </div>
+
+        <div class="stage" id="stage">
+        <canvas id="gl"></canvas>
+        <canvas id="overlay"></canvas>
+        <div class="readout" id="readout"></div>
+
+        <button class="ai-fab hidden" id="aiBtn" title="Open EEG-Master AI agent">
+          <span class="ai-fab-icon" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>
+              <circle cx="12" cy="12" r="3.2"/>
+            </svg>
+          </span>
+          <span class="ai-fab-label">EEG-Master</span>
+        </button>
+
+        <div class="hint-bar" id="hintBar">
+          <kbd>scroll</kbd> zoom time · <kbd>⇧ scroll</kbd> channels · <kbd>⌘ scroll</kbd> row height · <kbd>drag</kbd> move · <kbd>dbl-click</kbd> reset
+        </div>
+
+        <div class="loading" id="loading"><div class="spinner"></div></div>
+
+        <div class="dropzone" id="dropzone">
+          <div class="hero">
+            <div class="icon" aria-hidden="true">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12h3l2-7 4 14 2.5-9 1.5 4H21"/>
+              </svg>
+            </div>
+            <h1>Visualize neural waveforms</h1>
+            <p>Drop an EEG window to explore it. Multi-channel <b>HDF5</b> (<code>.h5</code>) and <b>EDF / EDF+ / BDF</b> (<code>.edf</code>) files are decoded by the Python backend and rendered with WebGL.</p>
+            <div class="cta">
+              <button class="btn accent" id="browseBtn">Choose a file</button>
+              <button class="btn ghost" id="sampleBtn">Load sample window</button>
+            </div>
+            <div class="error-msg" id="errorMsg"></div>
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept=".h5,.hdf5,.hdf,.edf,.bdf" />
+        <input type="file" id="directoryInput" webkitdirectory multiple />
+        </div>
+      </div>
+
+      <aside class="ai-drawer hidden" id="aiDrawer" aria-label="EEG-Master AI assistant">
+        <div class="ai-resizer" id="aiResizer" title="Drag to resize EEG-Master"></div>
+        <div class="ai-head">
+          <div class="ai-head-title">
+            <b>EEG-Master</b>
+            <span class="ai-status" id="aiStatus">Not connected</span>
+          </div>
+          <div class="ai-head-actions">
+            <button class="ai-icon-btn" id="aiNewBtn" title="New conversation" aria-label="New conversation">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button class="ai-icon-btn" id="aiHistoryBtn" title="Conversation history" aria-label="History">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg>
+            </button>
+            <button class="ai-config-toggle" id="aiConfigToggle" title="Configure provider and model">Config</button>
+            <button class="panel-close" id="aiCloseBtn" title="Close EEG-Master">×</button>
+          </div>
+        </div>
+
+        <div class="ai-history hidden" id="aiHistory">
+          <div class="ai-history-head">
+            <b>Conversations</b>
+            <button class="ai-icon-btn" id="aiHistoryClose" title="Close" aria-label="Close history">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="ai-history-list" id="aiHistoryList"></div>
+        </div>
+
+        <section class="ai-settings collapsed" id="aiSettings">
+          <div class="ai-field">
+            <label for="aiBaseUrl">Base URL</label>
+            <input type="url" id="aiBaseUrl" placeholder="https://api.openai.com or your provider" autocomplete="off" />
+          </div>
+          <div class="ai-field">
+            <label for="aiApiKey">API Key</label>
+            <input type="password" id="aiApiKey" placeholder="Session only" autocomplete="off" />
+          </div>
+          <div class="ai-field">
+            <label for="aiModelSelect">Model</label>
+            <select id="aiModelSelect"></select>
+          </div>
+          <div class="ai-field hidden" id="aiCustomWrap">
+            <label for="aiCustomModel">Custom model</label>
+            <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
+          </div>
+          <div class="ai-actions-row">
+            <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
+            <span id="aiConfigMsg"></span>
+          </div>
+        </section>
+
+        <div class="ai-messages" id="aiMessages" role="log" aria-live="polite">
+          <div class="ai-empty">
+            <div class="ai-empty-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>
+                <circle cx="12" cy="12" r="3.2"/>
+              </svg>
+            </div>
+            <b>EEG-Master</b>
+            <p>I work like an agent: I dig into the actual recording to answer you — inspecting channels, running Python on the real signal, reading the waveform, and annotating events — rather than guessing from a summary.</p>
+            <div class="ai-empty-caps">
+              <span>Inspect &amp; rank channels</span>
+              <span>Run Python on the real signal</span>
+              <span>Detect &amp; mark onset / offset</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="ai-jump" id="aiJump" title="Jump to latest">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          Latest
+        </button>
+
+        <div class="ai-composer">
+          <textarea id="aiInput" rows="3" placeholder="Ask EEG-Master about this data..."></textarea>
+          <div class="ai-send-row">
+            <button class="btn ghost ai-stop hidden" id="aiStopBtn">Stop</button>
+            <button class="btn accent" id="aiSendBtn">Send</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <div class="app-notice" id="appNotice" role="status" aria-live="polite"></div>
+  </div>
+
+  <dialog class="image-preview-dialog" id="imagePreviewDialog" aria-labelledby="imagePreviewTitle">
+    <div class="image-preview-shell">
+      <header class="image-preview-head">
+        <div>
+          <span>Export preview</span>
+          <strong id="imagePreviewTitle">Rendered PNG</strong>
+        </div>
+        <button type="button" id="imagePreviewClose" aria-label="Close image preview">×</button>
+      </header>
+      <div class="image-preview-toolbar">
+        <span id="imagePreviewMeta">Preparing preview…</span>
+        <div class="image-preview-zoom" role="group" aria-label="Preview zoom">
+          <button type="button" class="active" id="imagePreviewFit">Fit</button>
+          <button type="button" id="imagePreviewActual">100%</button>
+        </div>
+      </div>
+      <div class="image-preview-viewport fit" id="imagePreviewViewport">
+        <img id="imagePreviewImage" alt="Rendered EEG export preview" />
+      </div>
+      <footer class="image-preview-footer">
+        <span>Preview uses the exact final export renderer.</span>
+        <button type="button" id="imagePreviewDownload">Download PNG</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

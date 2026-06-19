@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# JavaScript / build output
+node_modules/
+dist/
+build/
+
+# Local runtimes and generated artifacts
+runtime/
+artifacts/
+exports/
+
+# Local one-off data preparation utilities
+/scripts/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials*.json
+secrets*.json
+secret*.yaml
+secret*.yml
+.secrets/
+
+# OS / editor cruft
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+
+.claude/plans/

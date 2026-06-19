@@ -1,0 +1,125 @@
+const channelRef = { type: ["string", "number"], description: "Channel label (for example Fp1) or zero-based index." };
+const timeRange = {
+  type: "object",
+  properties: { startSec: { type: "number" }, endSec: { type: "number" } },
+  required: ["startSec", "endSec"],
+  additionalProperties: false,
+};
+
+function define(name, description, properties = {}, required = [], meta = {}) {
+  return Object.freeze({
+    name,
+    description,
+    properties,
+    required,
+    aliases: meta.aliases || [],
+    access: meta.access || "read",
+    concurrencySafe: meta.concurrencySafe ?? (meta.access !== "write"),
+    destructive: Boolean(meta.destructive),
+  });
+}
+
+export const TOOL_DEFINITIONS = Object.freeze([
+  define("read_signal_workspace_guide", "Read the authoritative Signal Workspace operating guide. Use when capability, side-effect, image, event, or file semantics are uncertain."),
+  define("get_signal_workspace_state", "Return the current project, file, view, processing, channel-focus, analysis, event, and export-capability state.", {}, [], { aliases: ["get_current_context"] }),
+  define("list_signal_sources", "List EEG recordings currently available through the authorized Project Explorer, plus the bundled sample."),
+  define("open_signal_source", "Open a bundled sample or an authorized project recording. Only valid when the user explicitly asked to open/switch/compare files.", {
+    source: { type: "string", enum: ["sample", "project"] },
+    path: { type: "string", description: "Project-relative path; required for source=project." },
+    discardCurrentEvents: { type: "boolean", description: "Must be true when the current recording contains events that would be cleared." },
+  }, ["source"], { access: "write", destructive: true }),
+  define("inspect_channel", "Inspect one displayed channel over the current or requested time range using real samples and nearby events.", {
+    channel: channelRef, startSec: { type: "number" }, endSec: { type: "number" },
+  }, ["channel"]),
+  define("rank_channels", "Rank visible channels by a quantitative signal feature for triage.", {
+    metric: { type: "string", enum: ["rms", "peakToPeak", "gammaRatio", "dominantFrequency", "artifactScore"] },
+    limit: { type: "integer", minimum: 1, maximum: 24 },
+  }, ["metric"]),
+  define("detect_artifact_candidates", "Rank visible channels for possible artifact or noise and explain the screening reasons.", {
+    limit: { type: "integer", minimum: 1, maximum: 24 },
+  }),
+  define("inspect_time_window", "Summarize a time range across selected or visible channels using real displayed samples.", {
+    startSec: { type: "number" }, endSec: { type: "number" },
+    channels: { type: "array", items: channelRef },
+  }, ["startSec", "endSec"]),
+  define("run_python", "Run read-only Python analysis with numpy/scipy over the raw recording. Put numeric output in result and candidate annotations in event_candidates. Candidates are returned but never written to the workspace. A matplotlib figure may be attached.", {
+    code: { type: "string" }, purpose: { type: "string" },
+  }, ["code"]),
+  define("control_signal_view", "Drive the visible Signal Workspace: time window, selected channel, focused channel set and neighbors, search/sort, gain, row height, and analysis panel.", {
+    channel: channelRef,
+    startSec: { type: "number" }, endSec: { type: "number" },
+    channels: { type: "array", items: channelRef, maxItems: 64 },
+    neighborRadius: { type: "integer", minimum: 0, maximum: 8 },
+    clearChannelFocus: { type: "boolean" },
+    search: { type: "string" }, sort: { type: "string", enum: ["file", "group", "freq"] },
+    gain: { type: "number", minimum: 0.001, maximum: 2000 },
+    rowHeightPx: { type: "integer", minimum: 16, maximum: 160 },
+    analysisOpen: { type: "boolean" }, analysisMode: { type: "string", enum: ["spectrum", "spectrogram"] },
+    reset: { type: "boolean" },
+  }, [], { aliases: ["set_view"], access: "write" }),
+  define("configure_signal_processing", "Adjust montage, zero-phase band filtering, harmonic notch, normalization, and differencing.", {
+    montage: { type: "string", enum: ["raw", "bipolar", "car", "group-car", "local"] },
+    filterPreset: { type: "string", enum: ["review", "seizure", "sleep", "hfo", "off"] },
+    lowHz: { type: "number" }, highHz: { type: "number" },
+    notchHz: { type: "string", enum: ["off", "50", "60"] },
+    normalization: { type: "string", enum: ["none", "zscore", "minmax", "robust", "globalz", "l2"] },
+    diffOrder: { type: "integer", minimum: 0, maximum: 4 },
+  }, [], { aliases: ["set_processing"], access: "write" }),
+  define("manage_signal_events", "Add, update, or remove point/interval events. The control layer permits this only when the current user message explicitly requests annotation.", {
+    operation: { type: "string", enum: ["add", "update", "remove"] },
+    events: { type: "array", maxItems: 64, items: { type: "object", properties: {
+      id: { type: "string" }, onsetSec: { type: "number" }, offsetSec: { type: "number" }, label: { type: "string" },
+    }, additionalProperties: false } },
+  }, ["operation", "events"], { aliases: ["add_marker", "mark_events"], access: "write", destructive: true }),
+  define("render_signal_images", "Render model-readable signal images with the built-in producer while driving the visible workspace. Supports full/current/range/batch/multiscale and at most one overview plus four detail images.", {
+    scope: { type: "string", enum: ["full", "current", "range", "batch", "multiscale"] },
+    range: timeRange,
+    detailRanges: { type: "array", maxItems: 4, items: timeRange, description: "Order least to most important; the last range remains visible." },
+    batch: { type: "object", properties: {
+      startSec: { type: "number" }, endSec: { type: "number" }, windowSec: { type: "number" }, stepSec: { type: "number" },
+      indices: { type: "array", maxItems: 4, items: { type: "integer", minimum: 0 } },
+    }, additionalProperties: false },
+    source: { type: "string", enum: ["raw", "physical", "processed"] },
+    channelScope: { type: "string", enum: ["all", "visible", "selected"] },
+    channels: { type: "array", maxItems: 64, items: channelRef },
+    neighborRadius: { type: "integer", minimum: 0, maximum: 8 },
+    width: { type: "integer", minimum: 640, maximum: 2048 },
+    height: { type: "integer", minimum: 320, maximum: 4096 },
+    autoHeight: { type: "boolean" }, rowHeight: { type: "integer", minimum: 16, maximum: 80 },
+    labelFontSizePx: { type: "integer", minimum: 6, maximum: 24 },
+    style: { type: "string", enum: ["viewer", "training"] },
+    palette: { type: "string", enum: ["current", "cycle", "black", "mono"] },
+    monoColor: { type: "string" }, showLabels: { type: "boolean" }, showEvents: { type: "boolean" }, showGrid: { type: "boolean" },
+    reason: { type: "string" },
+  }, ["scope"], { aliases: ["capture_waveform_view"], access: "write" }),
+  define("export_signal_artifact", "Download a user-facing image, batch ZIP, CSV, event JSON, H5, or EDF+ artifact. Only valid when the user explicitly requested export/download/save.", {
+    format: { type: "string", enum: ["viewer-png", "training-png", "training-zip", "csv", "events-json", "h5", "edf"] },
+    source: { type: "string", enum: ["raw", "physical", "processed"] },
+    channels: { type: "string", enum: ["all", "visible"] },
+    range: { type: "string", enum: ["full", "current"] },
+    windowSec: { type: "number" }, stepSec: { type: "number" }, includePartial: { type: "boolean" },
+  }, ["format"], { access: "write", destructive: true }),
+]);
+
+const byName = new Map();
+for (const definition of TOOL_DEFINITIONS) {
+  byName.set(definition.name, definition);
+  definition.aliases.forEach((alias) => byName.set(alias, definition));
+}
+
+export function getToolDefinition(name) { return byName.get(String(name || "")) || null; }
+export function resolveToolName(name) { return getToolDefinition(name)?.name || String(name || ""); }
+
+export const EEG_TOOLS = TOOL_DEFINITIONS.map((definition) => ({
+  type: "function",
+  function: {
+    name: definition.name,
+    description: definition.description,
+    parameters: {
+      type: "object",
+      properties: definition.properties,
+      required: definition.required,
+      additionalProperties: false,
+    },
+  },
+}));

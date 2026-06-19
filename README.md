@@ -75,27 +75,6 @@ The chat proxy does not send raw waveform arrays by default.
 Workspace summaries and, when requested by the agent, rendered signal images or
 Python figures are sent to the provider configured by the user.
 
-## Development
-
-Install the locked environment explicitly when working on the project:
-
-```bash
-uv sync --frozen
-```
-
-Run the test suites with:
-
-```bash
-npm test
-uv run --frozen python -m unittest discover -s test -p 'test_*.py' -v
-```
-
-The main source areas are intentionally separated:
-
-- `backend/` — signal readers, binary transport, rendering, and export routes
-- `frontend/` — the viewer, workspace controls, and project explorer
-- `agent/` — the model proxy, tool loop, workspace contract, and Python worker
-- `test/` — Node and Python regression tests
 
 ## License
 

@@ -1,63 +1,142 @@
-# Waveform
+<div align="center">
 
-A local tool for reading EEG/iEEG recordings — and an agent that reads them with you.
+<h1><img src="./pic/logo/readme-logo.png" alt="Waveform logo" width="54" height="54" align="absmiddle" />&nbsp;&nbsp;Waveform</h1>
 
-Open a recording and it renders in the browser: scroll thousands of channels, zoom in
-time, re-reference, filter, and mark events. Switch on EEG-Master and the agent works on
-the *same* recording — it inspects channels, runs Python on the real samples, renders the
-views it needs, and proposes events — rather than guessing from a summary. The viewer is
-fully usable on its own; the agent is optional and uses a model you bring.
+**A local workspace for EEG and iEEG — with an agent that can inspect the same recording.**
 
-![Waveform: a multichannel recording with signal controls and the EEG-Master agent](./pic/exp.png)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://docs.astral.sh/uv/)
+[![Signals: EEG / iEEG](https://img.shields.io/badge/signals-EEG%20%2F%20iEEG-c75f3e.svg)](#what-is-waveform)
+[![Agent: optional](https://img.shields.io/badge/agent-optional-6b6760.svg)](#using-eeg-master)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-4c7c59.svg)](LICENSE)
 
-## What you get
+Open a recording, inspect it in the browser, and bring in EEG-Master when you want
+another set of tools. The agent works through the same signal workspace rather than
+guessing from a screenshot or a detached summary.
 
-- A WebGL viewer for large multichannel recordings — time navigation, channel scrolling,
-  gain and row height.
-- Montage (bipolar / CAR / Laplacian), zero-phase band-pass + notch, differencing, channel
-  ordering, and several normalizations.
-- A project explorer for moving between local recordings; nothing is uploaded to a service.
-- Point and interval events, with PNG, ZIP, CSV/JSON, HDF5, and EDF+ export.
-- EEG-Master: channel ranking, artifact screening, local Python analysis, and multi-scale
-  rendering — with a conservative write policy (it won't add or edit events unless you ask).
+**Clone the repository, run one command, and open the workspace in your browser.**
+
+</div>
+
+---
+
+## What is Waveform?
+
+Long, multichannel recordings often split the work across disconnected tools: a viewer
+can show the traces but cannot run an investigation, while a script can read the samples
+but does not know what the researcher is currently looking at. Waveform keeps those two
+sides together.
+
+The viewer gives you direct control over time, channels, montage, filters, normalization,
+events, and exports. Its optional agent, EEG-Master, can inspect the same recording, run
+Python over the underlying samples, generate its own full-recording and focused signal
+views, and operate the visible workspace while it investigates a question. It can report
+candidate events, but it cannot add or edit them unless you explicitly ask.
+
+![Waveform showing a multichannel recording, signal controls, and EEG-Master](./pic/exp.png)
+
+---
+
+## Highlights
+
+- **Built for long multichannel recordings.** WebGL rendering, time navigation, channel
+  scrolling, gain control, and adjustable row height keep large EEG/iEEG files usable.
+- **A real signal workspace.** Apply bipolar, CAR, group-CAR, or local montage; configure
+  zero-phase band-pass and notch filters; difference, normalize, search, and sort channels.
+- **An agent grounded in the recording.** EEG-Master can rank channels, screen artifacts,
+  inspect windows, run local Python, and render up to one overview plus four focused views.
+- **Conservative by design.** Annotation, file switching, and downloads require an explicit
+  request in the current turn. Analysis alone never grants permission to change events.
+- **Local viewer, provider of your choice.** The viewer works without AI. If the agent is
+  enabled, you choose the OpenAI-compatible model endpoint and decide what it may inspect.
+- **Useful outputs.** Create point or interval events and export PNG, batch ZIP, CSV/JSON,
+  HDF5, or EDF+ artifacts with processing provenance.
+
+---
 
 ## Quick start
 
-Waveform needs [uv](https://docs.astral.sh/uv/) and a desktop browser.
+Waveform requires [uv](https://docs.astral.sh/uv/) and a modern desktop browser. Python
+3.11 and all Python dependencies are pinned by the repository.
 
 ```bash
+git clone https://github.com/akatsuky999/Waveform.git
+cd Waveform
 ./run.sh
 ```
 
-Open <http://127.0.0.1:8000> and load a recording — or the bundled `win001.h5`. The first
-run builds the pinned environment from `uv.lock`; there is no frontend build step. On
-Windows, run the same service with `uv run --frozen python -m uvicorn backend.app:app`.
+Open <http://127.0.0.1:8000>, then choose a recording or load the bundled example. On the
+first run, `uv` creates the local environment from `uv.lock`; no frontend build is needed.
 
-**Formats.** HDF5 (`.h5`/`.hdf5`) as a `samples × channels` dataset, and EDF/EDF+/BDF via
-pyEDFlib. Decoding and export run in the local Python service; rendering stays in the browser.
+On Windows, start the same service from PowerShell:
 
-**Using EEG-Master.** Open *EEG-Master → Config* and enter a Base URL, API key, and model —
-nothing is set by default. The provider must speak the OpenAI Chat Completions API with
-streaming and tool calls, and accept image input to read rendered views. See
-[agent/README.md](agent/README.md) for the tool loop and provider contract.
+```powershell
+uv run --frozen python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+```
+
+### Supported recordings
+
+| Format | Notes |
+| --- | --- |
+| HDF5 (`.h5`, `.hdf`, `.hdf5`) | A two-dimensional `samples × channels` dataset. Channel labels and sampling-rate metadata are used when present. |
+| EDF / EDF+ / BDF (`.edf`, `.bdf`) | Read with pyEDFlib. Annotation channels are omitted and lower-rate channels are resampled to a common time grid. |
+
+The bundled `win001.h5` is a deidentified example with separate terms in
+[DATA_LICENSE.md](DATA_LICENSE.md).
+
+---
+
+## Using EEG-Master
+
+Open **EEG-Master → Config** and enter an API Base URL, API key, and model. Nothing is
+configured by default. The provider must offer an OpenAI-compatible Chat Completions API
+with SSE streaming and native multi-turn tool calls. A model also needs image input if it
+will inspect generated signal views.
+
+The normal agent loop sends workspace summaries, bounded tool results, and requested
+rendered images to the provider — not raw waveform arrays. Python analysis runs locally on
+the decoded recording. See [agent/README.md](agent/README.md) for the complete tool loop,
+provider contract, and sandbox model.
+
+---
+
+## Development
+
+Install the locked environment and run both regression suites:
+
+```bash
+uv sync --frozen
+npm test
+uv run --frozen python -m unittest discover -s test -p 'test_*.py' -v
+```
+
+The source is divided into three main areas:
+
+- `frontend/` — WebGL viewer, workspace controls, project explorer, and event UI
+- `backend/` — signal readers, binary transport, rendering, and export routes
+- `agent/` — model proxy, tool loop, workspace contract, knowledge, and Python worker
+
+---
 
 ## License
 
-Apache-2.0 for the source ([LICENSE](LICENSE)). The bundled example `win001.h5` is covered
-separately ([DATA_LICENSE.md](DATA_LICENSE.md)); the vendored Three.js keeps its MIT notice.
+Waveform source code is released under the [Apache License 2.0](LICENSE). The bundled
+example recording has separate terms in [DATA_LICENSE.md](DATA_LICENSE.md), and the
+vendored Three.js module retains its upstream MIT notice.
+
+---
 
 ## Limitations and safety
 
-- **Not a medical device.** Waveform is a research and engineering tool. Its output —
-  including agent conclusions and event candidates — must be reviewed by a qualified person
-  and never used as the sole basis for diagnosis or care.
-- **Processing changes appearance.** Filtering, montage, normalization, and resampling all
-  alter how a signal looks. Keep the source recording and note the settings behind any
-  interpretation or export.
-- **`run_python` is not a hardened sandbox.** Model-written code runs as a local subprocess
-  with your filesystem, network, and process permissions. Keep the service on `127.0.0.1`
-  and never expose the agent endpoints to a network or untrusted users.
-- **Credentials and data.** Your API key lives in browser `sessionStorage` and is forwarded
-  only to the Base URL you set. The proxy sends workspace summaries and rendered images to
-  that provider — never raw waveform arrays — but review the provider's retention terms
-  before sharing images.
+- **Not a medical device.** Waveform is a research and engineering tool. Agent conclusions
+  and event candidates require qualified human review and must not be the sole basis for
+  diagnosis or care.
+- **Processing changes appearance.** Montage, filtering, normalization, differencing, and
+  resampling can all change how a waveform looks. Preserve the source and record the
+  settings behind any interpretation or export.
+- **`run_python` is not a hardened sandbox.** Model-written code runs in a constrained local
+  subprocess, but it retains the local user's filesystem, network, and process permissions.
+  Keep the service on `127.0.0.1` and never expose Agent endpoints to untrusted users.
+- **Your provider sees what you send.** API credentials are kept in browser `sessionStorage`
+  and forwarded to the Base URL you configure. Review that provider's privacy and retention
+  terms before sharing workspace context or rendered signal images.

@@ -6,6 +6,7 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = PROJECT_DIR / "frontend"
+PIC_DIR = PROJECT_DIR / "pic"          # brand/logo + doc images, served at /pic
 SAMPLE_FILE = PROJECT_DIR / "win001.h5"
 
 # Upload guard. EEG windows are small; whole-recording EDFs can be larger.

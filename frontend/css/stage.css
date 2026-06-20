@@ -130,10 +130,9 @@
 .dropzone.drag { background: #f6efe9; }
 .hero { max-width: 520px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .hero .icon {
-  width: 58px; height: 58px; border-radius: 16px; background: var(--panel);
-  display: flex; align-items: center; justify-content: center; color: var(--accent);
+  width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;
 }
-.dropzone.drag .hero .icon { background: #efe0d8; }
+.hero .icon img { width: 100%; height: 100%; object-fit: contain; }
 .hero h1 { font-family: var(--serif); font-size: 32px; font-weight: 500; letter-spacing: -0.02em; margin: 4px 0 0; line-height: 1.1; }
 .hero p { font-size: 14px; color: var(--ink-soft); line-height: 1.6; margin: 0; max-width: 420px; }
 .hero p b { color: var(--ink); font-weight: 600; }

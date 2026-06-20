@@ -22,7 +22,7 @@ from starlette.staticfiles import StaticFiles
 
 from agent.backend.plugin import agent_routes
 
-from .config import FRONTEND_DIR
+from .config import FRONTEND_DIR, PIC_DIR
 from .routes import export_data_route, export_images_route, health, parse, render_images_route, sample
 
 
@@ -49,6 +49,8 @@ routes = [
     Route("/api/export/data", export_data_route, methods=["POST"]),
     # EEG-Master plugin (/api/ai/* + /agent static bundle) — before the catch-all.
     *agent_routes(),
+    # Brand/logo + doc images (repo-root pic/), so the app and the README share one source.
+    Mount("/pic", app=NoCacheStatic(directory=str(PIC_DIR)), name="pic"),
     # Catch-all static frontend mount must stay last.
     Mount("/", app=NoCacheStatic(directory=str(FRONTEND_DIR), html=True), name="static"),
 ]

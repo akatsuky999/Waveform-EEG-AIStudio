@@ -19,6 +19,15 @@ const MAX_TURNS = 16;            // hard safety cap on model round-trips per sen
 const MAX_CALLS_PER_TURN = 8;   // tool-call budget per turn
 const MAX_TOOL_RESULT_CHARS = 24000;
 const CONTEXT_WINDOW = 70;      // max transcript messages sent to the model
+const MAX_STREAM_RETRIES = 2;   // retry a turn on a transient network/stream blip
+
+// A network/upstream blip is worth retrying; auth/validation errors are not.
+function isTransientError(err) {
+  if (!err) return false;
+  if (err.name === "TypeError") return true; // fetch-level network failure
+  const m = String(err.message || "").toLowerCase();
+  return /network|timeout|temporar|reach upstream|connection|fetch failed|socket|econnreset|502|503|504|stream (closed|ended|failed)/.test(m);
+}
 
 export function initAgent(host) {
   let conv = null;        // active conversation { id, title, transcript, log }
@@ -123,12 +132,24 @@ export function initAgent(host) {
         ui.setStatus("busy", `Working · step ${turn + 1}`);
 
         const bubble = ui.beginAssistant();
-        const stream = await streamAICompletion({
-          baseUrl, apiKey, model,
-          messages: contextMessages(runConv.transcript),
-          tools: EEG_TOOLS,
-          context: host.signal.getState(),
-        }, (t) => bubble.update(t), signal);
+        let stream;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            stream = await streamAICompletion({
+              baseUrl, apiKey, model,
+              messages: contextMessages(runConv.transcript),
+              tools: EEG_TOOLS,
+              context: host.signal.getState(),
+            }, (t) => bubble.update(t), signal);
+            break;
+          } catch (err) {
+            if (signal.aborted || err?.name === "AbortError") throw err;
+            if (attempt >= MAX_STREAM_RETRIES || !isTransientError(err)) throw err;
+            bubble.update(`网络中断，正在重试 (${attempt + 1}/${MAX_STREAM_RETRIES})…`);
+            await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+          }
+        }
 
         // Resolve tool calls: native function calls first, legacy tags as fallback.
         let calls = stream.toolCalls || [];

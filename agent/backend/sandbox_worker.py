@@ -131,6 +131,22 @@ def main():
     event_candidates: list = []
     result: dict = {}
     workspace = meta.get("workspace") if isinstance(meta.get("workspace"), dict) else {}
+    # Be forgiving about how the model reaches for metadata: the structured state
+    # nests the sampling rate under workspace['file'], but models routinely guess
+    # flat keys like workspace['samplingRateHz']. Lift file.* to the top level and
+    # add convenient aliases so reasonable guesses resolve instead of KeyError.
+    if isinstance(workspace, dict):
+        file_meta = workspace.get("file") if isinstance(workspace.get("file"), dict) else {}
+        for key, val in file_meta.items():
+            workspace.setdefault(key, val)
+        workspace.setdefault("samplingRateHz", fs)
+        workspace.setdefault("fs", fs)
+        workspace.setdefault("labels", labels)
+        workspace.setdefault("groups", groups)
+        workspace.setdefault("nChannels", n_channels)
+        workspace.setdefault("nSamples", n_samples)
+        if "channels" not in workspace and isinstance(workspace.get("visibleChannels"), list):
+            workspace["channels"] = workspace["visibleChannels"]
 
     namespace = {
         "__name__": "__sandbox__",

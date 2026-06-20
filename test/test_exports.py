@@ -221,7 +221,7 @@ class ExportRoundTripTests(unittest.TestCase):
         sample_path = Path(__file__).resolve().parent.parent / "win001.h5"
         with h5py.File(sample_path, "r") as handle:
             self.assertTrue(bool(handle.attrs["deidentified"]))
-            self.assertEqual(handle.attrs["license"], "CC0-1.0")
+            self.assertNotIn("license", handle.attrs)
             self.assertNotIn("edf_stem", handle.attrs)
             self.assertEqual(handle["data"].shape, (2560, 52))
             self.assertEqual(len(handle.attrs["waveform_sha256"]), 64)

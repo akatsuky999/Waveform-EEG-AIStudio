@@ -42,7 +42,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
     startSec: { type: "number" }, endSec: { type: "number" },
     channels: { type: "array", items: channelRef },
   }, ["startSec", "endSec"]),
-  define("run_python", "Run read-only Python analysis with numpy/scipy over the raw recording. Put numeric output in result and candidate annotations in event_candidates. Candidates are returned but never written to the workspace. A matplotlib figure may be attached.", {
+  define("run_python", "Run read-only Python (numpy/scipy) over the raw recording in a sandbox. PRE-DEFINED GLOBALS (do not import or reconstruct them): data = np.float32 array, shape (n_channels, n_samples), the raw decoded signal; fs = sampling rate in Hz (a float — ALWAYS use this directly, never read the rate from workspace); labels, groups (lists, length n_channels); n_channels, n_samples (ints); t = time vector; find_channel(ref) -> index; np, numpy, scipy, signal (scipy.signal); workspace = the get_signal_workspace_state JSON (keys: file, view, settings, selectedChannel, visibleChannels[], events[]; per-channel stats live in workspace['visibleChannels'][i] as displayStats, bandEnergyRatio, dominantFrequencyHz). OUTPUTS: put numeric findings in the dict `result`; append candidate annotations (each {onsetSec, offsetSec?, label}) to the list `event_candidates` (returned to the model, never written to the workspace). A matplotlib figure is auto-attached if you create one. Prefer computing from `data`/`fs`; do not assume any workspace key beyond those listed.", {
     code: { type: "string" }, purpose: { type: "string" },
   }, ["code"]),
   define("control_signal_view", "Drive the visible Signal Workspace: time window, selected channel, focused channel set and neighbors, search/sort, gain, row height, and analysis panel.", {
@@ -71,7 +71,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
       id: { type: "string" }, onsetSec: { type: "number" }, offsetSec: { type: "number" }, label: { type: "string" },
     }, additionalProperties: false } },
   }, ["operation", "events"], { aliases: ["add_marker", "mark_events"], access: "write", destructive: true }),
-  define("render_signal_images", "Render model-readable signal images with the built-in producer while driving the visible workspace. Supports full/current/range/batch/multiscale and at most one overview plus four detail images.", {
+  define("render_signal_images", "Render model-readable signal images with the built-in producer while driving the visible workspace. Supports full/current/range/batch/multiscale and at most one overview plus four detail images. Required by scope: `range` needs a `range` {startSec,endSec} (endSec>startSec); `multiscale` needs `detailRanges`; `batch` needs `batch`. full/current need neither.", {
     scope: { type: "string", enum: ["full", "current", "range", "batch", "multiscale"] },
     range: timeRange,
     detailRanges: { type: "array", maxItems: 4, items: timeRange, description: "Order least to most important; the last range remains visible." },

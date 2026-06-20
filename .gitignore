@@ -48,3 +48,9 @@ secret*.yml
 
 
 .claude/plans/
+
+# Local agent rules (machine-local git-safety guidance; NOT for the public repo)
+/AGENTS.md
+/CLAUDE.md
+/.cursorrules
+/.cursor/

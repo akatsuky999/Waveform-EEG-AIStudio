@@ -60,8 +60,8 @@ Waveform requires [uv](https://docs.astral.sh/uv/) and a modern desktop browser.
 3.11 and all Python dependencies are pinned by the repository.
 
 ```bash
-git clone https://github.com/akatsuky999/Waveform.git
-cd Waveform
+git clone https://github.com/akatsuky999/Waveform-EEG-AIStudio.git
+cd Waveform-EEG-AIStudio
 ./run.sh
 ```
 
@@ -81,8 +81,8 @@ uv run --frozen python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 | HDF5 (`.h5`, `.hdf`, `.hdf5`) | A two-dimensional `samples × channels` dataset. Channel labels and sampling-rate metadata are used when present. |
 | EDF / EDF+ / BDF (`.edf`, `.bdf`) | Read with pyEDFlib. Annotation channels are omitted and lower-rate channels are resampled to a common time grid. |
 
-The bundled `win001.h5` is a deidentified example with separate terms in
-[DATA_LICENSE.md](DATA_LICENSE.md).
+The bundled `win001.h5` is a deidentified example covered by the separate
+[data notice](DATA_NOTICE.md).
 
 ---
 
@@ -121,7 +121,7 @@ The source is divided into three main areas:
 ## License
 
 Waveform source code is released under the [Apache License 2.0](LICENSE). The bundled
-example recording has separate terms in [DATA_LICENSE.md](DATA_LICENSE.md), and the
+example recording is covered by a separate [data notice](DATA_NOTICE.md), and the
 vendored Three.js module retains its upstream MIT notice.
 
 ---

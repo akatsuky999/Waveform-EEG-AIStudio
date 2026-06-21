@@ -32,7 +32,7 @@ from .datastore import get_dataset
 
 WORKER = str(Path(__file__).resolve().parent / "sandbox_worker.py")
 
-TIMEOUT_SECONDS = 20
+TIMEOUT_SECONDS = 45  # headroom for multi-channel filtering/welch on full recordings
 CPU_SECONDS = TIMEOUT_SECONDS + 2
 ADDRESS_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB best-effort cap
 MAX_CODE_CHARS = 20000

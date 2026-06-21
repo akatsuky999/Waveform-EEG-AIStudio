@@ -404,7 +404,9 @@ export function initDrawerUI(host, handlers = {}) {
     else handlers.onSelectConversation?.(row.dataset.id);
   });
   $("aiInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Ignore Enter while an IME is composing (e.g. confirming a Chinese
+    // candidate), so picking a candidate doesn't send a half-finished message.
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       handlers.onSend?.($("aiInput").value);
     }

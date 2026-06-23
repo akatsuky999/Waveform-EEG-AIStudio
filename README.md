@@ -35,6 +35,13 @@ candidate events, but it cannot add or edit them unless you explicitly ask.
 
 ![Waveform showing a multichannel recording, signal controls, and EEG-Master](./pic/exp.png)
 
+Want to see the agent's output without running the app first? Open the bundled
+[EEG-Master example report](agent_example.html): it is a self-contained exported
+HTML conversation showing the agent inspecting a 10-second EEG segment derived
+from the open CHB-MIT dataset, calling tools, running Python, and producing a
+structured report. On GitHub, download the file and open it locally for the
+rendered view.
+
 ---
 
 ## Highlights
@@ -97,6 +104,14 @@ The normal agent loop sends workspace summaries, bounded tool results, and reque
 rendered images to the provider — not raw waveform arrays. Python analysis runs locally on
 the decoded recording. See [agent/README.md](agent/README.md) for the complete tool loop,
 provider contract, and sandbox model.
+
+For a concrete example, see the self-contained
+[EEG-Master exported report](agent_example.html), built from a 10-second segment
+of the open CHB-MIT EEG dataset. It demonstrates the kind of tool-using trace the
+agent can produce: workspace configuration, channel ranking, artifact screening,
+Python analysis, rendered evidence, and a final narrative report. If you are
+viewing this on GitHub, use **Download raw file** and open it in a browser to see
+the styled report.
 
 ---
 

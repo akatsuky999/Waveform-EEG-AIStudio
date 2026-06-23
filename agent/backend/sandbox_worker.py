@@ -165,6 +165,20 @@ def main():
         "markers": event_candidates,
         "result": result,
     }
+    # Models write code blind (they cannot introspect the namespace first), so
+    # they reach for the variable names they learned from MNE / common EEG code
+    # (n_ch, n_samp, sfreq, ch_names, …). Expose those as aliases of the canonical
+    # globals so reasonable guesses resolve instead of NameError on line 1.
+    for _alias, _value in {
+        "n_ch": n_channels, "nch": n_channels, "n_chan": n_channels, "nchan": n_channels,
+        "n_channel": n_channels, "num_channels": n_channels,
+        "n_samp": n_samples, "nsamp": n_samples, "n_sample": n_samples,
+        "num_samples": n_samples, "n_times": n_samples, "n_samps": n_samples,
+        "sfreq": fs, "sr": fs, "srate": fs, "sample_rate": fs, "sampling_rate": fs, "Fs": fs,
+        "ch_names": labels, "channel_labels": labels, "ch_labels": labels,
+        "signals": data, "eeg": data,
+    }.items():
+        namespace.setdefault(_alias, _value)
     try:
         import scipy  # noqa: F401
         from scipy import signal as _signal

@@ -49,9 +49,7 @@
 .ai-fab:hover { transform: translateY(-1px); box-shadow: 0 11px 30px rgba(199,95,62,.44); filter: saturate(1.06) brightness(1.02); }
 .ai-fab:active { transform: translateY(0); }
 .ai-fab.hidden { display: none; }
-.ai-fab-icon { display: inline-flex; }
-.ai-fab-icon svg { animation: fab-spin 18s linear infinite; }
-@keyframes fab-spin { to { transform: rotate(360deg); } }
+.ai-fab-icon { display: inline-flex; align-items: center; justify-content: center; }
 .ai-fab::after {
   content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
   animation: fab-pulse 2.6s ease-out 3;
@@ -63,7 +61,7 @@
 }
 .main.ai-open .ai-fab { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .ai-fab-icon svg, .ai-fab::after { animation: none; }
+  .ai-fab::after { animation: none; }
 }
 
 .readout {

@@ -13,10 +13,7 @@ const $ = (id) => document.getElementById(id);
 const EMPTY_STATE_HTML = `
   <div class="ai-empty">
     <div class="ai-empty-icon" aria-hidden="true">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>
-        <circle cx="12" cy="12" r="3.2"/>
-      </svg>
+      <img src="/pic/agent_logo/eeg-master-ai-scope-rounded-512.png" alt="" />
     </div>
     <b>EEG-Master</b>
     <p>I work like an agent: I dig into the actual recording to answer you — inspecting channels, running Python on the real signal, reading the waveform, and annotating events — rather than guessing from a summary.</p>
@@ -403,6 +400,24 @@ export function initDrawerUI(host, handlers = {}) {
     if (e.target.closest(".ai-history-del")) handlers.onDeleteConversation?.(row.dataset.id);
     else handlers.onSelectConversation?.(row.dataset.id);
   });
+
+  // ---- export menu (format picker) ----
+  const exportBtn = $("aiExportBtn");
+  const exportMenu = $("aiExportMenu");
+  const closeExportMenu = () => { exportMenu.classList.remove("open"); exportBtn.setAttribute("aria-expanded", "false"); };
+  exportBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = exportMenu.classList.toggle("open");
+    exportBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  exportMenu.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-format]");
+    if (!item) return;
+    closeExportMenu();
+    handlers.onExport?.(item.dataset.format);
+  });
+  document.addEventListener("click", (e) => { if (!exportBtn.parentElement.contains(e.target)) closeExportMenu(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeExportMenu(); });
   $("aiInput").addEventListener("keydown", (e) => {
     // Ignore Enter while an IME is composing (e.g. confirming a Chinese
     // candidate), so picking a candidate doesn't send a half-finished message.
@@ -445,7 +460,7 @@ function prettyJSON(value, max = 4000) {
   return text;
 }
 
-function renderToolBody(name, outcome = {}) {
+export function renderToolBody(name, outcome = {}) {
   const parts = [];
   if (name === "run_python") {
     const r = outcome.result || {};
@@ -484,7 +499,7 @@ function imgTag(url, alt) {
 function svgIcon(paths) {
   return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 }
-function toolIcon(name) {
+export function toolIcon(name) {
   const map = {
     run_python: '<path d="M8 18l-4-6 4-6"/><path d="M16 6l4 6-4 6"/>',
     render_signal_images: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 16l-5-5-5 5"/>',

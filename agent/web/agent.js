@@ -13,7 +13,9 @@ import { getToolDefinition } from "./tool-definitions.js";
 import {
   createConversation, getConversation, saveConversation, deleteConversation,
   renameConversation, listConversations, getActiveId, setActiveId, titleFromText,
+  initConversations,
 } from "./conversations.js";
+import { exportConversation } from "./conversation-export.js";
 
 const MAX_TURNS = 16;            // hard safety cap on model round-trips per send
 const MAX_CALLS_PER_TURN = 8;   // tool-call budget per turn
@@ -42,14 +44,30 @@ export function initAgent(host) {
     onSelectConversation: selectConversation,
     onDeleteConversation: removeConversation,
     onRenameConversation: (id, title) => { renameConversation(id, title); refreshHistory(); },
+    onExport: exportActive,
   });
+
+  // Export the active in-memory conversation (which keeps full images) as
+  // JSON / HTML / Markdown.
+  function exportActive(format) {
+    if (!conv || (!conv.log?.length && !conv.transcript?.length)) {
+      ui.appendNote("Nothing to export yet — ask EEG-Master something first.");
+      return;
+    }
+    const meta = {
+      model: ui.getConfig().model || null,
+      file: host.signal.getState()?.file?.name || null,
+      exportedAt: Date.now(),
+    };
+    exportConversation(conv, format, meta);
+  }
 
   // ---- conversation lifecycle ----
   function refreshHistory() { ui.renderHistory(listConversations(), conv?.id); }
 
-  function loadActive() {
+  async function loadActive() {
     const id = getActiveId();
-    const existing = id ? getConversation(id) : null;
+    const existing = id ? await getConversation(id) : null;
     conv = existing || createConversation();
     if (existing) ui.renderConversation(conv.log);
     else ui.resetMessages();
@@ -74,9 +92,9 @@ export function initAgent(host) {
     ui.focusInput();
   }
 
-  function selectConversation(id) {
+  async function selectConversation(id) {
     if (busy) stopRun();
-    const loaded = getConversation(id);
+    const loaded = await getConversation(id);
     if (!loaded) return;
     conv = loaded;
     setActiveId(id);
@@ -85,12 +103,12 @@ export function initAgent(host) {
     ui.closeHistory();
   }
 
-  function removeConversation(id) {
+  async function removeConversation(id) {
     if (busy && controller && id === conv?.id) stopRun();
     discardedConversationIds.add(id);
     const nextActive = deleteConversation(id);
     if (conv?.id === id) {
-      const loaded = nextActive ? getConversation(nextActive) : null;
+      const loaded = nextActive ? await getConversation(nextActive) : null;
       conv = loaded || createConversation();
       if (loaded) ui.renderConversation(conv.log); else ui.resetMessages();
     }
@@ -258,7 +276,7 @@ export function initAgent(host) {
     }
   }
 
-  loadActive();
+  initConversations().then(loadActive).catch(loadActive);
 }
 
 // Keep tool_call/tool pairing valid when trimming: start the window at a user turn.

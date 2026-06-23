@@ -13,7 +13,7 @@ function installStorage() {
   };
 }
 
-test("saved image messages restore as valid text content", () => {
+test("saved image messages restore as valid text content", async () => {
   installStorage();
   const conversation = createConversation();
   conversation.transcript.push({
@@ -25,14 +25,14 @@ test("saved image messages restore as valid text content", () => {
   });
   saveConversation(conversation);
 
-  const restored = getConversation(conversation.id);
+  const restored = await getConversation(conversation.id);
   assert.deepEqual(restored.transcript[0].content[1], {
     type: "text",
-    text: "[Image omitted from saved history]",
+    text: "[image omitted from saved transcript]",
   });
 });
 
-test("legacy invalid image placeholders are migrated when read", () => {
+test("legacy invalid image placeholders are migrated when read", async () => {
   installStorage();
   const conversation = createConversation();
   conversation.transcript.push({
@@ -40,10 +40,10 @@ test("legacy invalid image placeholders are migrated when read", () => {
     content: [{ type: "image_url", image_url: { url: "[image omitted from history]" } }],
   });
   saveConversation(conversation);
-  assert.equal(getConversation(conversation.id).transcript[0].content[0].type, "text");
+  assert.equal((await getConversation(conversation.id)).transcript[0].content[0].type, "text");
 });
 
-test("background conversation saves do not steal active selection", () => {
+test("background conversation saves do not steal active selection", async () => {
   installStorage();
   const active = createConversation();
   active.log.push({ kind: "user", text: "active" });
@@ -53,5 +53,5 @@ test("background conversation saves do not steal active selection", () => {
   saveConversation(background, { activate: false });
 
   assert.equal(getActiveId(), active.id);
-  assert.equal(getConversation(background.id).log[0].text, "background");
+  assert.equal((await getConversation(background.id)).log[0].text, "background");
 });

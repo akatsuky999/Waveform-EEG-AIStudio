@@ -16,6 +16,8 @@ in Python; n-th differencing, normalization and rendering happen client-side.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
@@ -23,7 +25,12 @@ from starlette.staticfiles import StaticFiles
 from agent.backend.plugin import agent_routes
 
 from .config import FRONTEND_DIR, PIC_DIR
-from .routes import export_data_route, export_images_route, health, parse, render_images_route, sample
+from .core import store
+from .routes import (
+    export_data_route, export_images_route, health, parse,
+    render_images_route, sample, signal_ingest, signal_meta, signal_query,
+    signal_stats, signal_status, signal_window,
+)
 
 
 class NoCacheStatic(StaticFiles):
@@ -43,6 +50,12 @@ class NoCacheStatic(StaticFiles):
 routes = [
     Route("/api/parse", parse, methods=["POST"]),
     Route("/api/sample", sample, methods=["GET"]),
+    Route("/api/signal/ingest", signal_ingest, methods=["POST"]),
+    Route("/api/signal/status", signal_status, methods=["GET"]),
+    Route("/api/signal/meta", signal_meta, methods=["GET"]),
+    Route("/api/signal/query", signal_query, methods=["POST"]),
+    Route("/api/signal/window", signal_window, methods=["GET"]),
+    Route("/api/signal/stats", signal_stats, methods=["GET"]),
     Route("/api/health", health, methods=["GET"]),
     Route("/api/export/images", export_images_route, methods=["POST"]),
     Route("/api/render/images", render_images_route, methods=["POST"]),
@@ -55,7 +68,13 @@ routes = [
     Mount("/", app=NoCacheStatic(directory=str(FRONTEND_DIR), html=True), name="static"),
 ]
 
-app = Starlette(routes=routes)
+@asynccontextmanager
+async def lifespan(_app):
+    store.cleanup_all()  # remove any derived stores left by a previous run
+    yield
+
+
+app = Starlette(routes=routes, lifespan=lifespan)
 
 
 if __name__ == "__main__":

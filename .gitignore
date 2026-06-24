@@ -24,6 +24,10 @@ exports/
 # Local one-off data preparation utilities
 /scripts/
 
+# Local planning / progress notes (machine-local, not for the public repo)
+/todoplan.md
+/todoplan/
+
 # Secrets and machine-local configuration
 .env
 .env.*

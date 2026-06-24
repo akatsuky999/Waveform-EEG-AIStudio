@@ -502,6 +502,7 @@ function svgIcon(paths) {
 export function toolIcon(name) {
   const map = {
     run_python: '<path d="M8 18l-4-6 4-6"/><path d="M16 6l4 6-4 6"/>',
+    signal_query: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3"/><path d="M21 21l-2.5-2.5"/><circle cx="17" cy="17" r="2.2"/>',
     render_signal_images: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 16l-5-5-5 5"/>',
     capture_waveform_view: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 16l-5-5-5 5"/>',
     inspect_channel: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',

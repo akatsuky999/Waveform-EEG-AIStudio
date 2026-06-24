@@ -115,6 +115,9 @@ def main():
     labels = list(meta.get("labels") or [])
     groups = list(meta.get("groups") or [])
     n_channels, n_samples = (data.shape if data.ndim == 2 else (1, data.shape[0]))
+    # For a large recording `data` is only the requested window; window_start_sec is
+    # its absolute offset so `t_abs` maps samples back to recording time.
+    window_start_sec = float(meta.get("window_start_sec") or 0.0)
 
     def find_channel(ref):
         if isinstance(ref, (int, np.integer)) and 0 <= int(ref) < n_channels:
@@ -159,6 +162,8 @@ def main():
         "n_channels": n_channels,
         "n_samples": n_samples,
         "t": np.arange(n_samples) / fs if fs else np.arange(n_samples),
+        "window_start_sec": window_start_sec,
+        "t_abs": (window_start_sec + np.arange(n_samples) / fs) if fs else np.arange(n_samples),
         "find_channel": find_channel,
         "workspace": workspace,
         "event_candidates": event_candidates,

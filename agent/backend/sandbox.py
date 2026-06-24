@@ -30,6 +30,17 @@ from starlette.responses import JSONResponse, Response
 
 from .datastore import get_dataset
 
+# Large recordings live in the out-of-core windowed store; run_python reads only a
+# bounded window from it. Soft import so the plugin still works standalone.
+try:
+    from backend.core import store as signal_store
+    from backend.core.util import group_of
+except Exception:  # noqa: BLE001
+    signal_store = None
+
+    def group_of(_label):  # type: ignore[misc]
+        return "other"
+
 WORKER = str(Path(__file__).resolve().parent / "sandbox_worker.py")
 
 TIMEOUT_SECONDS = 45  # headroom for multi-channel filtering/welch on full recordings
@@ -69,7 +80,8 @@ def _clean_env(workdir: str) -> dict:
     }
 
 
-def _run_worker(code: str, dataset: dict, workspace: dict | None = None) -> dict:
+def _run_worker(code: str, dataset: dict, workspace: dict | None = None,
+                window_start_sec: float = 0.0) -> dict:
     """Blocking: set up a work dir, run the worker, collect its result."""
     with tempfile.TemporaryDirectory(prefix="eeg-sandbox-") as workdir:
         np.save(os.path.join(workdir, "_data.npy"), np.ascontiguousarray(dataset["array"], dtype=np.float32))
@@ -78,6 +90,7 @@ def _run_worker(code: str, dataset: dict, workspace: dict | None = None) -> dict
             "labels": dataset["labels"],
             "groups": dataset["groups"],
             "workspace": workspace if isinstance(workspace, dict) else {},
+            "window_start_sec": float(window_start_sec),
             "limits": {"cpuSeconds": CPU_SECONDS, "addressBytes": ADDRESS_BYTES},
         }
         with open(os.path.join(workdir, "_meta.json"), "w", encoding="utf-8") as handle:
@@ -156,13 +169,34 @@ async def ai_execute(request: Request) -> Response:
         return _json_error("code is too long for the sandbox.", 400)
 
     token = str(data.get("dataToken") or "").strip()
+    workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
     dataset = get_dataset(token)
+    window_start_sec = 0.0
+
+    # Large recording → read only the requested window from the out-of-core store.
+    if dataset is None and signal_store is not None and signal_store.get_meta(token) is not None:
+        view = workspace.get("view") if isinstance(workspace.get("view"), dict) else {}
+        start = data.get("startSec", view.get("startSec"))
+        end = data.get("endSec", view.get("endSec"))
+        if start is None or end is None:
+            return _json_error(
+                "This is a large windowed recording — run_python needs a bounded time "
+                "window. Pass startSec and endSec (find one with signal_query op='search').",
+                400,
+            )
+        result = signal_store.read_samples(token, float(start), float(end))
+        if result is None:
+            return _json_error("No windowed dataset for this dataToken. Reload, then retry.", 409)
+        arr, info = result
+        dataset = {"array": arr, "fs": info["fs"], "labels": info["labels"],
+                   "groups": [group_of(label) for label in info["labels"]]}
+        window_start_sec = info["startSec"]
+
     if dataset is None:
         return _json_error(
             "No cached dataset for this dataToken. Reload the EEG file, then retry.",
             409,
         )
 
-    workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
-    result = await asyncio.to_thread(_run_worker, code, dataset, workspace)
+    result = await asyncio.to_thread(_run_worker, code, dataset, workspace, window_start_sec)
     return JSONResponse(result)

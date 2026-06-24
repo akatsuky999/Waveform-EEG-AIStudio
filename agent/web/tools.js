@@ -26,14 +26,25 @@ export async function runToolCall(host, call, signal, policy = {}) {
       requireAction(policy, "fileSwitch");
       return ok(name, await host.project.openSource(args));
     }
+    if (name === "signal_query") return signalQueryTool(host, args, signal);
     if (name === "inspect_channel") {
+      if (isWindowed(host)) return ok(name, await windowedInspectChannel(host, args, signal));
       const index = host.signal.resolveChannel(args.channel ?? args.label ?? args.index);
       if (index === null) throw new Error("Channel not found");
       return ok(name, inspectChannelTool(host, index, args));
     }
-    if (name === "rank_channels") return ok(name, rankChannelsTool(host, args.metric || "artifactScore", args.limit));
-    if (name === "detect_artifact_candidates") return ok(name, detectArtifactCandidatesTool(host, args.limit));
-    if (name === "inspect_time_window") return ok(name, inspectTimeWindowTool(host, args));
+    if (name === "rank_channels") {
+      if (isWindowed(host)) return ok(name, await windowedRank(host, args, signal));
+      return ok(name, rankChannelsTool(host, args.metric || "artifactScore", args.limit));
+    }
+    if (name === "detect_artifact_candidates") {
+      if (isWindowed(host)) return ok(name, await windowedRank(host, { metric: "artifactScore", limit: args.limit }, signal));
+      return ok(name, detectArtifactCandidatesTool(host, args.limit));
+    }
+    if (name === "inspect_time_window") {
+      if (isWindowed(host)) return ok(name, await windowedTimeWindow(host, args, signal));
+      return ok(name, inspectTimeWindowTool(host, args));
+    }
     if (name === "run_python") return runPythonTool(host, args, signal);
     if (name === "control_signal_view") return ok(name, host.workspace.setView(args));
     if (name === "configure_signal_processing") return ok(name, host.workspace.configureProcessing(args));
@@ -78,6 +89,9 @@ export function toolTitle(name, args = {}) {
     detect_artifact_candidates: "Detect artifact candidates",
     inspect_time_window: `Inspect window ${args.startSec ?? "?"}–${args.endSec ?? "?"}s`,
     run_python: args.purpose ? `Run Python · ${String(args.purpose).slice(0, 60)}` : "Run Python",
+    signal_query: args.op === "search"
+      ? `Signal search · ${args.metric || "rms"}`
+      : `Signal aggregate · ${args.startSec ?? "?"}–${args.endSec ?? "?"}s`,
     control_signal_view: "Control signal view",
     configure_signal_processing: "Configure signal processing",
     manage_signal_events: `${args.operation || "Manage"} signal events`,
@@ -87,11 +101,76 @@ export function toolTitle(name, args = {}) {
   return map[canonical] || canonical || "Tool";
 }
 
+// ---- queryable-store tools (large recordings) ---------------------------
+function isWindowed(host) {
+  try { return !!host.signal.getState()?.windowed; } catch { return false; }
+}
+
+async function signalQueryTool(host, args, signal) {
+  const op = String(args.op || "");
+  if (op !== "search" && op !== "aggregate") {
+    return { name: "signal_query", ok: false, error: "op must be 'search' or 'aggregate'." };
+  }
+  try {
+    const spec = { op };
+    if (op === "search") {
+      spec.metric = args.metric || "rms";
+      if (args.predicate && typeof args.predicate === "object") spec.predicate = args.predicate;
+      if (args.limit != null) spec.limit = args.limit;
+    }
+    if (numberArg(args.startSec) !== null) spec.startSec = numberArg(args.startSec);
+    if (numberArg(args.endSec) !== null) spec.endSec = numberArg(args.endSec);
+    if (Array.isArray(args.channels) && args.channels.length) {
+      spec.channels = args.channels.map((ref) => host.signal.resolveChannel(ref)).filter(Number.isInteger);
+    }
+    return ok("signal_query", await host.signalQuery(spec, signal));
+  } catch (error) {
+    return { name: "signal_query", ok: false, error: error.message || String(error) };
+  }
+}
+
+async function windowedInspectChannel(host, args, signal) {
+  const index = host.signal.resolveChannel(args.channel ?? args.label ?? args.index);
+  if (index === null) throw new Error("Channel not found");
+  const view = host.signal.getView();
+  const start = numberArg(args.startSec) ?? view.startSec;
+  const end = numberArg(args.endSec) ?? view.endSec;
+  const payload = await host.signalQuery({ op: "aggregate", startSec: start, endSec: end, channels: [index] }, signal);
+  const meta = host.signal.getChannelMeta(index) || {};
+  return {
+    channel: { index, label: meta.label, group: meta.group },
+    exact: payload.meta?.exact, window: payload.channels?.[0] || null,
+  };
+}
+
+async function windowedTimeWindow(host, args, signal) {
+  const start = numberArg(args.startSec), end = numberArg(args.endSec);
+  if (start === null || end === null || end <= start) throw new Error("startSec/endSec must define a forward time window");
+  const channels = Array.isArray(args.channels) && args.channels.length
+    ? args.channels.map((ref) => host.signal.resolveChannel(ref)).filter(Number.isInteger) : undefined;
+  const payload = await host.signalQuery({ op: "aggregate", startSec: start, endSec: end, channels }, signal);
+  return {
+    startSec: round(start), endSec: round(end), durationSec: round(end - start),
+    exact: payload.meta?.exact, channels: payload.channels || [],
+  };
+}
+
+async function windowedRank(host, args, signal) {
+  const map = { rms: "rms", peakToPeak: "p2p", artifactScore: "artifact", gammaRatio: "lineLength", dominantFrequency: "zeroCross" };
+  const metric = map[args.metric] || "rms";
+  const payload = await host.signalQuery({ op: "search", metric, limit: args.limit || 8 }, signal);
+  return (payload.windows || []).map((w) => ({
+    index: w.channel, label: w.label, metric, score: w.score,
+    startSec: w.startSec, endSec: w.endSec, ...w.features,
+  }));
+}
+
 async function runPythonTool(host, args, signal) {
   const code = String(args.code || "");
   if (!code.trim()) return { name: "run_python", ok: false, error: "code is required", code };
   try {
-    const data = await host.runPython(code, signal);
+    const window = { startSec: numberArg(args.startSec), endSec: numberArg(args.endSec) };
+    const data = await host.runPython(code, signal, window);
     const figure = data.figurePngDataUrl || null;
     const candidates = Array.isArray(data.eventCandidates) ? data.eventCandidates
       : Array.isArray(data.markers) ? data.markers : [];

@@ -319,12 +319,29 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
       if (!response.ok) throw new Error("Signal Workspace guide is unavailable.");
       return response.text();
     },
-    async runPython(code, signalAbort) {
-      const token = viewer.header?.dataToken;
+    async runPython(code, signalAbort, window) {
+      const token = viewer.header?.dataToken || viewer.windowToken;
       if (!token) throw new Error("No dataset token is available. Reload the EEG file, then retry.");
+      const body = { code, dataToken: token, workspace: state() };
+      if (window && Number.isFinite(window.startSec) && Number.isFinite(window.endSec)) {
+        body.startSec = window.startSec; body.endSec = window.endSec;
+      }
       const response = await fetch("/api/ai/execute", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, dataToken: token, workspace: state() }), signal: signalAbort,
+        body: JSON.stringify(body), signal: signalAbort,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || response.statusText);
+      return payload;
+    },
+    // Unified declarative query over the out-of-core store (large recordings).
+    // The viewer renders via the same endpoint; the agent issues aggregate/search.
+    async signalQuery(spec, signalAbort) {
+      const token = viewer.windowToken || viewer.header?.dataToken;
+      if (!token) throw new Error("No windowed dataset is loaded.");
+      const response = await fetch("/api/signal/query", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, ...spec }), signal: signalAbort,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || response.statusText);

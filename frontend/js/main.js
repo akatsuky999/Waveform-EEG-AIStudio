@@ -4,7 +4,7 @@
 
 import { WaveformViewer } from "./viewer/viewer.js";
 import { $, escapeHtml, round } from "./core/util.js";
-import { fetchParsed, fetchSample } from "./core/api.js";
+import { fetchParsed, fetchSample, streamIngest } from "./core/api.js";
 import { initNormalization } from "./ui/normalization.js";
 import { initAnalysisPanel } from "./ui/analysis-panel.js";
 import { initChannels } from "./ui/channels.js";
@@ -146,11 +146,28 @@ async function loadFile(file, {
   const path = source === "project" ? relativePath : file.name;
   const { requestId, signal } = beginLoad(path, relativePath);
   try {
-    const { header, channels } = await fetchParsed(file, { signal });
+    // Large HDF5/EDF → stream straight into the out-of-core store (bounded RAM, no
+    // whole-file upload buffer); smaller files take the legacy decode path.
+    const STREAM_THRESHOLD_BYTES = 40 * 1024 * 1024;
+    const bigFile = file.size > STREAM_THRESHOLD_BYTES && /\.(h5|hdf5|hdf|edf|edf\+|bdf)$/i.test(file.name);
+    const parsed = bigFile
+      ? await streamIngest(file, {
+          signal,
+          onProgress: (st) => showNotice(`Ingesting ${file.name} — ${Math.round((st.progress || 0) * 100)}%`),
+        })
+      : await fetchParsed(file, { signal });
     if (requestId !== loadRequestId) return false;
-    const result = viewer.setData(header, channels, { preserveSettings: preserveProcessing });
+    let header, montageFallback = false;
+    if (parsed.windowed) {
+      viewer.setWindowedData(parsed.meta, parsed.dataToken);
+      header = parsed.meta;
+    } else {
+      const result = viewer.setData(parsed.header, parsed.channels, { preserveSettings: preserveProcessing });
+      header = parsed.header;
+      montageFallback = result.montageFallback;
+    }
     viewer.setFileContext(source === "project" ? { projectName, relativePath } : {});
-    onLoaded(header, { preserveProcessing, montageFallback: result.montageFallback });
+    onLoaded(header, { preserveProcessing, montageFallback });
     appState.currentFilePath = path;
     appState.currentFileType = dataFileType(file.name) || header.kind;
     appState.loadStatus = "ready";

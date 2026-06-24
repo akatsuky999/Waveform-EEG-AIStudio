@@ -28,6 +28,29 @@ export function parseEnvelope(buffer) {
 }
 
 /**
+ * Parse a windowed render tile from /api/signal/window.
+ *
+ *   [uint32 LE header length][UTF-8 JSON header][float32 LE payload]
+ *
+ * header.mode === "agg": payload is channel-major min/max columns —
+ *   for channel c, column j: data[(c*nCols + j)*2 + 0]=min, +1=max.
+ * header.mode === "raw": payload is channel-major raw samples —
+ *   for channel c, sample i: data[c*nSamples + i].
+ *
+ * Returns { header, data } where data is one Float32Array over the payload.
+ */
+export function parseWindowTile(buffer) {
+  const dv = new DataView(buffer);
+  const headerLen = dv.getUint32(0, true);
+  const header = JSON.parse(new TextDecoder("utf-8").decode(new Uint8Array(buffer, 4, headerLen)));
+  const dataOffset = 4 + headerLen;
+  const data = dataOffset % 4 === 0
+    ? new Float32Array(buffer, dataOffset)
+    : new Float32Array(buffer.slice(dataOffset));
+  return { header, data };
+}
+
+/**
  * Forward n-th order discrete difference. Order 0 returns the input untouched;
  * each order shortens the array by one sample: d[i] = x[i+1] - x[i].
  */

@@ -26,6 +26,7 @@ import { buildMontage, montageLabel } from "./montage.js";
 import {
   compareEvents, createEvent, legacyMarkersFromEvents, serializeEventsDocument,
 } from "../core/events.js";
+import { fetchWindow } from "../core/api.js";
 
 const GROUP_COLORS = ["#c45f3c", "#5f86b3", "#6f8350", "#b08240", "#8a6aa0", "#4f8a86", "#b5654a", "#7a7d52"];
 
@@ -100,6 +101,18 @@ export class WaveformViewer {
     this.diffOrder = 0;
     this.normMethod = "none";
     this.normOpts = { mmRange: "sym", robLow: 25 };
+
+    // Windowed (out-of-core) mode — set by setWindowedData for large recordings.
+    // The viewer then holds only `meta` + the current render tile, fetching new
+    // tiles from /api/signal/window on pan/zoom instead of all samples.
+    this.windowed = false;
+    this.windowToken = null;
+    this.windowMeta = null;
+    this.tile = null;           // current parsed tile { header, data }
+    this._tileSeq = 0;          // drops stale async tile responses
+    this._tileTimer = null;
+    this._tileRange = null;     // [start,end] the current geometry was requested for
+    this._tileCache = new Map();// small LRU of recent tiles
 
     this.mouse = { x: -1, y: -1, inside: false };
     this.onReadout = null;
@@ -186,6 +199,14 @@ export class WaveformViewer {
 
   // --------------------------------------------------------------- data load
   setData(header, channels, { preserveSettings = false } = {}) {
+    // Leaving windowed mode (e.g. small sample after a large recording): stop any
+    // pending tile fetches and clear windowed state so the full-array path owns rendering.
+    this.windowed = false;
+    this.windowToken = null;
+    this.windowMeta = null;
+    this.tile = null;
+    this._tileRange = null;
+    clearTimeout(this._tileTimer);
     const settings = preserveSettings ? {
       diffOrder: this.diffOrder,
       normMethod: this.normMethod,
@@ -230,6 +251,174 @@ export class WaveformViewer {
     this._emitSelection();
     this._emitEvents();
     return { montageFallback: requestedMontage !== "raw" && this.montageMode === "raw" };
+  }
+
+  // ---- windowed (out-of-core) data path -----------------------------------
+  // Large recordings never load all samples. We keep `meta` + the current tile
+  // and pull render-ready min/max columns (or a raw window on deep zoom) from the
+  // server LoD store, so the on-screen geometry is always ~screen-width — payload
+  // and vertex count are independent of recording length.
+  setWindowedData(meta, token) {
+    this.windowed = true;
+    this.windowToken = token;
+    this.windowMeta = meta;
+    this.baseHeader = meta;
+    this.header = meta;
+    this.fs = meta.fs || 256;
+    this.nSamples = meta.nSamples;
+    this.nDisp = meta.nSamples;
+    this.duration = meta.durationSec || meta.nSamples / this.fs;
+    this.nChannels = meta.nChannels;
+
+    this.groupColor.clear();
+    (meta.groups || []).forEach((g, i) => this.groupColor.set(g, GROUP_COLORS[i % GROUP_COLORS.length]));
+
+    this.diffOrder = 0; this.normMethod = "none"; this.normOpts = { mmRange: "sym", robLow: 25 };
+    this.gainMult = 1; this.montageMode = "raw"; this.filterOpts = { low: 0, high: 0, notch: "off" };
+    this.hiddenGroups.clear(); this.hiddenChannels.clear();
+    this.soloChannel = null; this.pinnedChannel = null; this.channelSearch = ""; this.channelSort = "file";
+    this.selectedChannel = 0;
+    this.events = []; this.markers = []; this.measureRange = null; this.measureMode = false; this.markerMode = false;
+
+    this.channelMeta = (meta.channels || []).map((c, i) => ({
+      label: c.label, group: c.group, sourceIndex: i, montage: "raw",
+      std: c.std, min: c.min, max: c.max, mean: c.mean,
+    }));
+    this.channelColor = this.channelMeta.map((c) => this.groupColor.get(c.group) || GROUP_COLORS[0]);
+    this.channelStats = this.channelMeta.map((c) => ({ rms: c.std, freq: 0, bands: {}, dominantBand: "" }));
+    this.channelFreqs = this.channelStats.map(() => 0);
+    this.dispChannels = []; // intentionally empty — geometry comes from tiles
+
+    const robust = meta.globalStd
+      || median(this.channelMeta.map((c) => c.std).filter((s) => s > 0)) || 1;
+    this.autoGainWorld = 0.32 / robust;
+
+    for (const ln of this.lines) { ln.geometry.dispose(); ln.material.dispose(); this.scene.remove(ln); }
+    this.lines = [];
+    this._tileCache.clear();
+    this._tileRange = null;
+    this.tile = null;
+    this._rebuildOrder();
+    this.resetView();      // tStart=0, tEnd=duration, render()
+    this._fetchTile();     // initial overview tile
+    this._emitSelection();
+    this._emitChannels();
+    this._emitEvents();
+    return { montageFallback: false };
+  }
+
+  _maybeScheduleTile() {
+    const r = this._tileRange;
+    if (r) {
+      const span = this.tEnd - this.tStart || 1;
+      const same = Math.abs(this.tStart - r[0]) < span * 0.02 &&
+                   Math.abs(this.tEnd - r[1]) < span * 0.02;
+      if (same) return;
+    }
+    this._scheduleTile();
+  }
+
+  _scheduleTile() {
+    clearTimeout(this._tileTimer);
+    this._tileTimer = setTimeout(() => this._fetchTile(), 70);
+  }
+
+  async _fetchTile() {
+    if (!this.windowed || !this.windowToken) return;
+    const maxColumns = Math.max(64, Math.round(this.plotW || 1000));
+    const t0 = this.tStart, t1 = this.tEnd;
+    this._tileRange = [t0, t1];   // optimistic, so repeated renders don't reschedule
+    const key = `${t0.toFixed(3)}|${t1.toFixed(3)}|${maxColumns}`;
+    const seq = ++this._tileSeq;
+    const cached = this._tileCache.get(key);
+    if (cached) { this.tile = cached; this._buildLinesFromTile(); return; }
+    try {
+      const tile = await fetchWindow(this.windowToken, t0, t1, maxColumns, null);
+      if (seq !== this._tileSeq) return; // a newer request superseded this one
+      this._tileCache.set(key, tile);
+      if (this._tileCache.size > 24) this._tileCache.delete(this._tileCache.keys().next().value);
+      this.tile = tile;
+      this._buildLinesFromTile();
+    } catch (err) {
+      if (err?.name !== "AbortError") { /* keep the previous geometry on a blip */ }
+    }
+  }
+
+  // Exact client-side DSP applied to a raw (deep-zoom) window. Montage is a
+  // follow-up for large recordings; filter / difference / normalization are exact.
+  _processWindow(sig, c) {
+    let out = sig;
+    const fo = this.filterOpts;
+    if (fo && (Number(fo.low) || Number(fo.high) || (fo.notch && fo.notch !== "off"))) {
+      out = applyFrequencyFilter(out, this.fs, fo);
+    }
+    if (this.diffOrder > 0) out = nthDifference(out, this.diffOrder);
+    if (this.normMethod && this.normMethod !== "none") {
+      const g = this.normMethod === "globalz"
+        ? { mean: this.channelMeta[c]?.mean ?? 0, std: this.windowMeta?.globalStd || 1 } : null;
+      out = normalizeChannel(out, this.normMethod, g, this.normOpts);
+    }
+    return out;
+  }
+
+  _buildLinesFromTile() {
+    const tile = this.tile;
+    if (!tile) return;
+    for (const ln of this.lines) { ln.geometry.dispose(); ln.material.dispose(); this.scene.remove(ln); }
+    this.lines = [];
+    const h = tile.header, data = tile.data;
+    const g = this.autoGainWorld * this.gainMult;
+    for (let c = 0; c < this.nChannels; c++) {
+      let line;
+      if (h.mode === "raw") {
+        const n = h.nSamples;
+        const sig = this._processWindow(data.subarray(c * n, (c + 1) * n), c);
+        const positions = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) { positions[i * 3] = h.startSample + i; positions[i * 3 + 1] = sig[i]; }
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: toThreeColor(this.channelColor[c]) }));
+      } else {
+        // aggregate: a vertical min→max segment per column (the M4 min/max overview)
+        const nCols = h.nCols;
+        const step = (h.endSample - h.startSample) / nCols;
+        const positions = new Float32Array(nCols * 2 * 3);
+        const base = c * nCols * 2;
+        for (let j = 0; j < nCols; j++) {
+          const x = h.startSample + j * step;
+          const k = j * 6;
+          positions[k] = x; positions[k + 1] = data[base + j * 2];     // min
+          positions[k + 3] = x; positions[k + 4] = data[base + j * 2 + 1]; // max
+        }
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        line = new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ color: toThreeColor(this.channelColor[c]) }));
+      }
+      line.position.y = -c;
+      line.scale.y = g;
+      this.scene.add(line);
+      this.lines.push(line);
+    }
+    this._applyVisibility();
+    this.render();
+  }
+
+  // Representative value under the crosshair in windowed mode (no full arrays).
+  _tileValueAt(c, sampleX) {
+    const t = this.tile;
+    if (!t) return null;
+    const h = t.header, d = t.data;
+    if (h.mode === "raw") {
+      const i = Math.round(sampleX - h.startSample);
+      if (i < 0 || i >= h.nSamples) return null;
+      return d[c * h.nSamples + i];
+    }
+    const span = h.endSample - h.startSample;
+    if (span <= 0) return null;
+    const j = Math.floor((sampleX - h.startSample) / (span / h.nCols));
+    if (j < 0 || j >= h.nCols) return null;
+    const base = c * h.nCols * 2 + j * 2;
+    return (d[base] + d[base + 1]) / 2;
   }
 
   _rebuildSourceChannels({ fallbackInvalidMontage = false } = {}) {
@@ -358,30 +547,37 @@ export class WaveformViewer {
 
   setDiffOrder(n) {
     this.diffOrder = n;
+    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
     this._applyPipeline();
     this.setGain(this.gainMult);
   }
 
   setNorm(method) {
     this.normMethod = method;
+    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
     this._applyPipeline();
     this.setGain(this.gainMult);
   }
 
   setNormOpts(opts) {
     Object.assign(this.normOpts, opts);
+    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
     this._applyPipeline();
     this.setGain(this.gainMult);
   }
 
   setFilter(opts) {
     Object.assign(this.filterOpts, opts);
+    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
     this._rebuildSourceChannels();
     this.setGain(this.gainMult);
   }
 
   setMontageMode(mode) {
     this.montageMode = typeof mode === "boolean" ? (mode ? "bipolar" : "raw") : (mode || "raw");
+    // Montage on large recordings is a follow-up (needs server-side referencing);
+    // keep the raw view and don't touch the full-array pipeline.
+    if (this.windowed) { this.montageMode = "raw"; return; }
     this.hiddenChannels.clear();
     this.soloChannel = null;
     this.pinnedChannel = null;
@@ -605,6 +801,7 @@ export class WaveformViewer {
 
   buildAIContext() {
     if (!this.header) return { loaded: false };
+    if (this.windowed) return this._windowedAIContext();
     const summarizeChannel = (c) => {
       const meta = this.channelMeta[c] || {};
       const stats = this.channelStats[c] || {};
@@ -692,8 +889,55 @@ export class WaveformViewer {
     };
   }
 
+  // Minimal agent context for a large recording. Full windowed agent access
+  // (run_python / inspect over time-windows + a queryable feature index) is the
+  // planned follow-up; here the agent gets the current view summary only.
+  _windowedAIContext() {
+    const m = this.windowMeta || {};
+    const summarize = (c) => {
+      const meta = this.channelMeta[c] || {};
+      return {
+        index: c, label: meta.label || `ch${c}`, group: meta.group || "",
+        sourceIndex: c, montage: "raw",
+        displayStats: {
+          mean: roundN(meta.mean, 4), min: roundN(meta.min, 4), max: roundN(meta.max, 4),
+          peakToPeak: roundN((meta.max || 0) - (meta.min || 0), 4),
+        },
+      };
+    };
+    return {
+      loaded: true,
+      windowed: true,
+      note: "Large recording in out-of-core windowed mode. Windowed agent analysis "
+        + "(run_python / inspect over time-windows + a queryable feature index) is a "
+        + "planned follow-up; only the current view summary is available.",
+      file: {
+        name: m.fileName || "", format: m.kind || "h5",
+        samplingRateHz: roundN(this.fs, 4), durationSec: roundN(this.duration, 4),
+        sourceChannels: m.nChannels, displayedChannels: this.nChannels, samples: m.nSamples,
+      },
+      view: {
+        startSec: roundN(this.tStart, 4), endSec: roundN(this.tEnd, 4),
+        spanSec: roundN(this.tEnd - this.tStart, 4),
+        visibleChannelCount: this.visibleChannels.length, visibleChannelLimit: 24,
+      },
+      settings: {
+        montage: this.montageMode, normalization: this.normMethod, diffOrder: this.diffOrder,
+        unit: this.unit, gain: roundN(this.gainMult, 4),
+        filter: {
+          lowHz: Number(this.filterOpts.low) || 0, highHz: Number(this.filterOpts.high) || 0,
+          notchHz: (this.filterOpts.notch === "50" || this.filterOpts.notch === "60") ? Number(this.filterOpts.notch) : 0,
+        },
+      },
+      selectedChannel: this.selectedChannel === null ? null : summarize(this.selectedChannel),
+      visibleChannels: this.visibleChannels.slice(0, 24).map(summarize),
+      events: [],
+      privacy: "Summary only. Raw waveforms are not included.",
+    };
+  }
+
   exportVisibleCSV() {
-    if (!this.header) return "";
+    if (this.windowed || !this.header) return "";
     const start = Math.max(0, Math.floor(this.tStart * this.fs));
     const end = Math.min(this.nDisp, Math.ceil(this.tEnd * this.fs));
     const labels = this.visibleChannels.map((c) => this.channelMeta[c].label);
@@ -710,6 +954,9 @@ export class WaveformViewer {
   }
 
   getExportSeries({ source = "processed", channels = "visible", edfSafe = false } = {}) {
+    if (this.windowed) {
+      throw new Error("Export and image rendering for large (windowed) recordings is a planned follow-up.");
+    }
     const effectiveSource = edfSafe && source === "processed" ? "physical" : source;
     let arrays;
     let meta;
@@ -778,6 +1025,7 @@ export class WaveformViewer {
     }
     this.cssW = w; this.cssH = h;
     this._clampChannels();
+    if (this.windowed) this._scheduleTile(); // column budget tracks the plot width
     this.render();
   }
 
@@ -821,6 +1069,9 @@ export class WaveformViewer {
     this.renderer.render(this.scene, this.camera);
     this._drawChrome();
     this._drawEventTrack();
+    // Reframing existing min/max geometry gives instant visual zoom; the sharper
+    // tile for the new range is fetched in the background and swapped in.
+    if (this.windowed) this._maybeScheduleTile();
     if (this.onView) this.onView();
   }
 
@@ -917,6 +1168,24 @@ export class WaveformViewer {
     ctx.textAlign = "left"; ctx.fillStyle = cSoft;
     ctx.font = '10px "Inter", sans-serif';
     ctx.fillText("time (s)", G + 8, plotBottom + this.axisH / 2);
+
+    // Windowed mode: badge whether the on-screen geometry is exact (raw samples)
+    // or an approximate LoD/aggregate overview — the result-contract made visible.
+    if (this.windowed && this.tile?.header) {
+      const h = this.tile.header;
+      const exact = !!h.exact;
+      const label = exact
+        ? "EXACT"
+        : `OVERVIEW ≈${(((h.resolution || 1) / this.fs) * 1000).toFixed(0)} ms/col`;
+      ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      const bw = ctx.measureText(label).width + 16, bh = 17;
+      const bx = plotRight - bw - 8, by = 7;
+      ctx.fillStyle = exact ? "rgba(71,112,81,.16)" : "rgba(176,130,64,.18)";
+      this._roundRect(ctx, bx, by, bw, bh, 8); ctx.fill();
+      ctx.fillStyle = exact ? "#477051" : "#8a6418";
+      ctx.fillText(label, bx + 8, by + bh / 2 + 0.5);
+    }
 
     this._updateScrollbars(plotBottom, plotRight);
   }
@@ -1113,18 +1382,21 @@ export class WaveformViewer {
     const i = Math.round(this.screenToWorldX(x));
     let info = null;
     if (ch !== undefined && i >= 0 && i < this.nDisp) {
-      info = {
-        x, y,
-        label: this.channelMeta[ch].label,
-        color: this.channelColor[ch],
-        time: i / this.fs,
-        value: this.dispChannels[ch][i],
-        unit: this.unit,
-        freq: this.channelFreqs[ch],
-      };
-      const by = this.worldToScreenY(-row);
-      ctx.fillStyle = info.color;
-      ctx.beginPath(); ctx.arc(x, by, 3.2, 0, Math.PI * 2); ctx.fill();
+      const value = this.windowed ? this._tileValueAt(ch, i) : this.dispChannels[ch]?.[i];
+      if (value !== null && value !== undefined) {
+        info = {
+          x, y,
+          label: this.channelMeta[ch].label,
+          color: this.channelColor[ch],
+          time: i / this.fs,
+          value,
+          unit: this.unit,
+          freq: this.windowed ? NaN : this.channelFreqs[ch],
+        };
+        const by = this.worldToScreenY(-row);
+        ctx.fillStyle = info.color;
+        ctx.beginPath(); ctx.arc(x, by, 3.2, 0, Math.PI * 2); ctx.fill();
+      }
     }
     if (this.onReadout) this.onReadout(info);
   }

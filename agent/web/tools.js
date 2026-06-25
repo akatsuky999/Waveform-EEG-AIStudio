@@ -11,6 +11,11 @@ const BAND_META = [
 
 function round(number) { return Math.round(number * 100) / 100; }
 function ok(name, result, extra = {}) { return { name, ok: true, result, ...extra }; }
+function windowedWorkflowHint(op = "search") {
+  return op === "aggregate"
+    ? "Use result.meta.exact to judge precision; for exact morphology, choose a short bounded window and call run_python(startSec,endSec) or render_signal_images."
+    : "Pick the strongest candidate window, then call run_python(startSec,endSec) for exact computation and render_signal_images for short-window morphology.";
+}
 
 export async function runToolCall(host, call, signal, policy = {}) {
   const requestedName = String(call?.name || call?.tool || "").trim();
@@ -125,7 +130,8 @@ async function signalQueryTool(host, args, signal) {
     if (Array.isArray(args.channels) && args.channels.length) {
       spec.channels = args.channels.map((ref) => host.signal.resolveChannel(ref)).filter(Number.isInteger);
     }
-    return ok("signal_query", await host.signalQuery(spec, signal));
+    const payload = await host.signalQuery(spec, signal);
+    return ok("signal_query", { ...payload, workflowHint: windowedWorkflowHint(op) });
   } catch (error) {
     return { name: "signal_query", ok: false, error: error.message || String(error) };
   }
@@ -170,8 +176,18 @@ async function windowedRank(host, args, signal) {
 async function runPythonTool(host, args, signal) {
   const code = String(args.code || "");
   if (!code.trim()) return { name: "run_python", ok: false, error: "code is required", code };
+  const windowed = isWindowed(host);
+  const window = { startSec: numberArg(args.startSec), endSec: numberArg(args.endSec) };
+  if (windowed && (window.startSec === null || window.endSec === null || window.endSec <= window.startSec)) {
+    return {
+      name: "run_python",
+      ok: false,
+      error: "Large/windowed run_python requires a bounded startSec/endSec window. Use signal_query op='search' first to choose candidate windows.",
+      workflowHint: windowedWorkflowHint("search"),
+      code,
+    };
+  }
   try {
-    const window = { startSec: numberArg(args.startSec), endSec: numberArg(args.endSec) };
     const data = await host.runPython(code, signal, window);
     const figure = data.figurePngDataUrl || null;
     const candidates = Array.isArray(data.eventCandidates) ? data.eventCandidates
@@ -187,6 +203,16 @@ async function runPythonTool(host, args, signal) {
       eventsApplied: 0,
       figureAttached: !!figure,
     };
+    if (windowed) {
+      result.windowed = true;
+      result.window = {
+        startSec: round(window.startSec),
+        endSec: round(window.endSec),
+        durationSec: round(window.endSec - window.startSec),
+      };
+      result.exact = true;
+      result.workflowHint = "Use render_signal_images on this short window for morphology evidence before making visual claims.";
+    }
     const attachments = figure ? [{ kind: "image", dataUrl: figure, label: "Python analysis figure" }] : [];
     return { name: "run_python", ok: !!data.ok, result, attachments, code };
   } catch (error) {

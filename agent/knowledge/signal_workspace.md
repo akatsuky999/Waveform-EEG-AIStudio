@@ -49,6 +49,19 @@ switch files”, and “do not save” keep the corresponding capability blocked
 The injected context is not waveform evidence. Quantitative claims should cite
 inspection/Python results; morphology claims should cite generated images.
 
+For `windowed=true` large recordings, treat the file as an indexed long
+recording rather than a degraded workspace. The first-class workflow is:
+
+1. `signal_query op="search"` to rank candidate channel/time windows from the
+   feature index without scanning the whole recording.
+2. `run_python(startSec,endSec)` on the selected bounded window for exact
+   raw-sample computation. Large recordings require these bounds.
+3. `render_signal_images` on short focused ranges for morphology evidence.
+
+Wide `signal_query op="aggregate"` results may be approximate; always check
+`result.meta.exact`. Full-recording overview images and full-array exports are
+not available for large recordings, but exact short-window images are available.
+
 ## Multi-scale image production
 
 `render_signal_images` uses the backend renderer rather than the viewport

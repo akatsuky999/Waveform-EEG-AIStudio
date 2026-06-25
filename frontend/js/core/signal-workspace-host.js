@@ -92,6 +92,21 @@ function agentImageLimits(args = {}) {
 }
 
 export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) {
+  const largeRecordingAnalysis = () => viewer.windowed ? {
+    status: "available",
+    mode: "indexed-windowed",
+    workflow: ["signal_query.search", "run_python.bounded-window", "render_signal_images.short-window"],
+    boundedPythonRequired: true,
+    shortWindowImages: true,
+    fullOverviewImages: false,
+  } : {
+    status: "available",
+    mode: "full-array",
+    boundedPythonRequired: false,
+    shortWindowImages: false,
+    fullOverviewImages: true,
+  };
+
   const state = () => ({
     ...viewer.buildAIContext(),
     project: {
@@ -105,6 +120,7 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
       projectFiles: explorer.state.permission === "granted",
       imageProducer: true,
       multiScaleImages: { overview: 1, details: 4 },
+      largeRecordingAnalysis: largeRecordingAnalysis(),
       largeRecordingImages: viewer.windowed ? { mode: "short-window-exact", fullOverview: false } : { mode: "full-array" },
       eventWritesRequireExplicitUserIntent: true,
       fileSwitchRequiresExplicitUserIntent: true,

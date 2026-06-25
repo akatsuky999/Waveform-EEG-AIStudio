@@ -27,6 +27,10 @@ import {
   compareEvents, createEvent, legacyMarkersFromEvents, serializeEventsDocument,
 } from "../core/events.js";
 import { fetchWindow, fetchSamples } from "../core/api.js";
+import {
+  buildWindowedAgentContext,
+  WINDOWED_FULL_ARRAY_EXPORT_UNAVAILABLE,
+} from "../core/windowed-agent-context.js";
 
 const GROUP_COLORS = ["#c45f3c", "#5f86b3", "#6f8350", "#b08240", "#8a6aa0", "#4f8a86", "#b5654a", "#7a7d52"];
 
@@ -989,51 +993,24 @@ export class WaveformViewer {
     };
   }
 
-  // Minimal agent context for a large recording. Full windowed agent access
-  // (run_python / inspect over time-windows + a queryable feature index) is the
-  // planned follow-up; here the agent gets the current view summary only.
   _windowedAIContext() {
-    const m = this.windowMeta || {};
-    const summarize = (c) => {
-      const meta = this.channelMeta[c] || {};
-      return {
-        index: c, label: meta.label || `ch${c}`, group: meta.group || "",
-        sourceIndex: c, montage: "raw",
-        displayStats: {
-          mean: roundN(meta.mean, 4), min: roundN(meta.min, 4), max: roundN(meta.max, 4),
-          peakToPeak: roundN((meta.max || 0) - (meta.min || 0), 4),
-        },
-      };
-    };
-    return {
-      loaded: true,
-      windowed: true,
-      note: "Large recording in out-of-core windowed mode. Windowed agent analysis "
-        + "(run_python / inspect over time-windows + a queryable feature index) is a "
-        + "planned follow-up; only the current view summary is available.",
-      file: {
-        name: m.fileName || "", format: m.kind || "h5",
-        samplingRateHz: roundN(this.fs, 4), durationSec: roundN(this.duration, 4),
-        sourceChannels: m.nChannels, displayedChannels: this.nChannels, samples: m.nSamples,
-      },
-      view: {
-        startSec: roundN(this.tStart, 4), endSec: roundN(this.tEnd, 4),
-        spanSec: roundN(this.tEnd - this.tStart, 4),
-        visibleChannelCount: this.visibleChannels.length, visibleChannelLimit: 24,
-      },
-      settings: {
-        montage: this.montageMode, normalization: this.normMethod, diffOrder: this.diffOrder,
-        unit: this.unit, gain: roundN(this.gainMult, 4),
-        filter: {
-          lowHz: Number(this.filterOpts.low) || 0, highHz: Number(this.filterOpts.high) || 0,
-          notchHz: (this.filterOpts.notch === "50" || this.filterOpts.notch === "60") ? Number(this.filterOpts.notch) : 0,
-        },
-      },
-      selectedChannel: this.selectedChannel === null ? null : summarize(this.selectedChannel),
-      visibleChannels: this.visibleChannels.slice(0, 24).map(summarize),
-      events: [],
-      privacy: "Summary only. Raw waveforms are not included.",
-    };
+    return buildWindowedAgentContext({
+      windowMeta: this.windowMeta,
+      channelMeta: this.channelMeta,
+      selectedChannel: this.selectedChannel,
+      visibleChannels: this.visibleChannels,
+      fs: this.fs,
+      duration: this.duration,
+      nChannels: this.nChannels,
+      tStart: this.tStart,
+      tEnd: this.tEnd,
+      montageMode: this.montageMode,
+      normMethod: this.normMethod,
+      diffOrder: this.diffOrder,
+      unit: this.unit,
+      gainMult: this.gainMult,
+      filterOpts: this.filterOpts,
+    });
   }
 
   exportVisibleCSV() {
@@ -1055,7 +1032,7 @@ export class WaveformViewer {
 
   getExportSeries({ source = "processed", channels = "visible", edfSafe = false } = {}) {
     if (this.windowed) {
-      throw new Error("Export and image rendering for large (windowed) recordings is a planned follow-up.");
+      throw new Error(WINDOWED_FULL_ARRAY_EXPORT_UNAVAILABLE);
     }
     const effectiveSource = edfSafe && source === "processed" ? "physical" : source;
     let arrays;

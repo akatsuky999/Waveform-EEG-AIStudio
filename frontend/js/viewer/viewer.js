@@ -1093,6 +1093,92 @@ export class WaveformViewer {
     };
   }
 
+  async getWindowedExportSeries({ source = "processed", channels = "all", startSec = this.tStart, endSec = this.tEnd, signal } = {}) {
+    if (!this.windowed) return this.getExportSeries({ source, channels });
+    if (!this.windowToken) throw new Error("No large-recording data token is available.");
+    const t0 = Math.max(0, Number(startSec) || 0);
+    const t1 = Math.min(this.duration, Number(endSec) || 0);
+    if (!(t1 > t0)) throw new Error("startSec/endSec must define a forward time window.");
+    const res = await fetchSamples(this.windowToken, t0, t1, null, { signal });
+    const sourceIndices = Array.isArray(res.header.channels)
+      ? res.header.channels : res.arrays.map((_array, index) => index);
+    const baseMeta = sourceIndices.map((sourceIndex, localIndex) => {
+      const c = this.windowMeta?.channels?.[sourceIndex] || {};
+      return {
+        ...c,
+        label: c.label || `ch${sourceIndex ?? localIndex}`,
+        group: c.group || "",
+        sourceIndex,
+        montage: "raw",
+      };
+    });
+
+    const effectiveSource = source;
+    let arrays;
+    let meta;
+    if (effectiveSource === "raw") {
+      arrays = res.arrays;
+      meta = baseMeta;
+    } else {
+      const filtered = res.arrays.map((a) => applyFrequencyFilter(a, this.fs, this.filterOpts));
+      let chans = filtered;
+      meta = baseMeta.map((c) => ({ ...c }));
+      if (this.montageMode !== "raw") {
+        const montage = buildMontage(filtered, meta, this.montageMode);
+        if (montage.channels.length) {
+          chans = montage.channels;
+          meta = montage.meta;
+        }
+      }
+      if (effectiveSource === "physical") {
+        arrays = chans;
+      } else {
+        arrays = chans;
+        if (this.diffOrder > 0) arrays = arrays.map((a) => nthDifference(a, this.diffOrder));
+        if (this.normMethod && this.normMethod !== "none") {
+          const gstats = this.normMethod === "globalz" ? globalStats(arrays) : null;
+          arrays = arrays.map((a) => normalizeChannel(a, this.normMethod, gstats, this.normOpts));
+        }
+      }
+    }
+
+    let selected;
+    if (channels === "visible") {
+      if (this._procMode && this.channelMeta.length === meta.length) selected = this.visibleChannels.slice();
+      else {
+        const visibleSources = new Set(this.visibleChannels.map((index) => this.channelMeta[index]?.sourceIndex ?? index));
+        selected = meta.map((item, index) => visibleSources.has(item.sourceIndex ?? index) ? index : -1).filter((index) => index >= 0);
+      }
+    } else selected = arrays.map((_array, index) => index);
+    selected = [...new Set(selected)].filter((index) => arrays[index]);
+    if (!selected.length) selected = arrays.map((_array, index) => index);
+
+    return {
+      arrays: selected.map((index) => arrays[index]),
+      labels: selected.map((index) => meta[index]?.label || `ch${index}`),
+      colors: selected.map((index) => this.groupColor.get(meta[index]?.group) || GROUP_COLORS[index % GROUP_COLORS.length]),
+      source: effectiveSource,
+      fs: this.fs,
+      nSamples: selected.length ? selected[0].length : 0,
+      timeOffsetSec: res.header.startSec ?? t0,
+      startSec: res.header.startSec ?? t0,
+      endSec: res.header.endSec ?? t1,
+      sourceIndices: selected.map((index) => meta[index]?.sourceIndex ?? index),
+      provenance: {
+        requestedSource: source,
+        effectiveSource,
+        montage: effectiveSource === "raw" ? "raw" : this.montageMode,
+        filter: effectiveSource === "raw" ? { low: 0, high: 0, notch: "off" } : { ...this.filterOpts },
+        diffOrder: effectiveSource === "processed" ? this.diffOrder : 0,
+        normalization: effectiveSource === "processed" ? this.normMethod : "none",
+        normalizationOptions: effectiveSource === "processed" ? { ...this.normOpts } : {},
+        unit: effectiveSource === "processed" ? this.unit : "µV",
+        windowed: true,
+        sourceWindowSec: [t0, t1],
+      },
+    };
+  }
+
   exportPNG() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const canvas = document.createElement("canvas");

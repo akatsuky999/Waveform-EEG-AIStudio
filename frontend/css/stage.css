@@ -40,14 +40,15 @@
   position: absolute; right: 22px; bottom: 22px; z-index: 7;
   display: inline-flex; align-items: center; gap: 9px;
   padding: 11px 18px 11px 13px; border-radius: 100px;
-  border: 1px solid var(--accent-ink); cursor: pointer;
+  border: 1px solid var(--accent-ink); cursor: grab; user-select: none; touch-action: none;
   background: linear-gradient(180deg, #d36c49 0%, var(--accent) 100%);
   color: #fff; font-family: var(--sans); font-size: 13.5px; font-weight: 600; letter-spacing: .01em;
   box-shadow: 0 6px 22px rgba(199,95,62,.34), 0 1px 3px rgba(29,27,22,.14);
   transition: transform .14s ease, box-shadow .14s ease, filter .14s ease;
 }
 .ai-fab:hover { transform: translateY(-1px); box-shadow: 0 11px 30px rgba(199,95,62,.44); filter: saturate(1.06) brightness(1.02); }
-.ai-fab:active { transform: translateY(0); }
+.ai-fab:active, .ai-fab.dragging { cursor: grabbing; transform: translateY(0); }
+.ai-fab.is-positioned { right: auto; bottom: auto; }
 .ai-fab.hidden { display: none; }
 .ai-fab-icon { display: inline-flex; align-items: center; justify-content: center; }
 .ai-fab::after {

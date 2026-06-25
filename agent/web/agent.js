@@ -17,7 +17,7 @@ import {
 } from "./conversations.js";
 import { exportConversation } from "./conversation-export.js";
 
-const MAX_TURNS = 16;            // hard safety cap on model round-trips per send
+const DEFAULT_MAX_TURNS = 16;    // fallback; UI config controls the real cap
 const MAX_CALLS_PER_TURN = 8;   // tool-call budget per turn
 const MAX_TOOL_RESULT_CHARS = 24000;
 const CONTEXT_WINDOW = 70;      // max transcript messages sent to the model
@@ -35,6 +35,7 @@ export function initAgent(host) {
   let conv = null;        // active conversation { id, title, transcript, log }
   let busy = false;
   let controller = null;  // AbortController for the active run
+  let pendingContinuation = null;
   const discardedConversationIds = new Set();
 
   const ui = initDrawerUI(host, {
@@ -45,7 +46,9 @@ export function initAgent(host) {
     onDeleteConversation: removeConversation,
     onRenameConversation: (id, title) => { renameConversation(id, title); refreshHistory(); },
     onExport: exportActive,
+    onContinue: continueRun,
   });
+  host.getAgentConfiguration = () => ui.getPublicConfig();
 
   // Export the active in-memory conversation (which keeps full images) as
   // JSON / HTML / Markdown.
@@ -84,6 +87,7 @@ export function initAgent(host) {
 
   function newChat() {
     if (busy) stopRun();
+    pendingContinuation = null;
     conv = createConversation();
     setActiveId(conv.id);
     ui.resetMessages();
@@ -94,6 +98,7 @@ export function initAgent(host) {
 
   async function selectConversation(id) {
     if (busy) stopRun();
+    pendingContinuation = null;
     const loaded = await getConversation(id);
     if (!loaded) return;
     conv = loaded;
@@ -105,6 +110,7 @@ export function initAgent(host) {
 
   async function removeConversation(id) {
     if (busy && controller && id === conv?.id) stopRun();
+    if (pendingContinuation?.convId === id) pendingContinuation = null;
     discardedConversationIds.add(id);
     const nextActive = deleteConversation(id);
     if (conv?.id === id) {
@@ -118,13 +124,20 @@ export function initAgent(host) {
   function stopRun() { if (controller) controller.abort(); }
 
   // ---- the send / agent loop ----
+  function checkedConfig() {
+    const config = ui.getConfig();
+    if (!config.baseUrl) { ui.appendError("请先在 Config 里填写 API Base URL。"); ui.setStatus("err", "URL required"); return null; }
+    if (!config.apiKey) { ui.appendError("请先在 Config 里填写 API Key。"); ui.setStatus("err", "Key required"); return null; }
+    if (!config.model) { ui.appendError("请选择模型，或在 Custom model 里填写模型名。"); ui.setStatus("err", "Model required"); return null; }
+    config.maxTurns = Math.max(4, Math.min(64, parseInt(config.maxTurns, 10) || DEFAULT_MAX_TURNS));
+    return config;
+  }
+
   async function sendAIMessage(rawText) {
     const text = (rawText || "").trim();
     if (!text || busy) return;
-    const { baseUrl, apiKey, model } = ui.getConfig();
-    if (!baseUrl) { ui.appendError("请先在 Config 里填写 API Base URL。"); ui.setStatus("err", "URL required"); return; }
-    if (!apiKey) { ui.appendError("请先在 Config 里填写 API Key。"); ui.setStatus("err", "Key required"); return; }
-    if (!model) { ui.appendError("请选择模型，或在 Custom model 里填写模型名。"); ui.setStatus("err", "Model required"); return; }
+    const config = checkedConfig();
+    if (!config) return;
 
     ui.setOpen(true);
     ui.saveSettings();
@@ -137,17 +150,40 @@ export function initAgent(host) {
     runConv.log.push({ kind: "user", text });
     if (firstMessage) { runConv.title = titleFromText(text); setActiveId(runConv.id); }
 
+    pendingContinuation = null;
+    await runAgentLoop(runConv, deriveActionPolicy(text), config);
+  }
+
+  async function continueRun() {
+    if (busy || !pendingContinuation || pendingContinuation.convId !== conv?.id) return;
+    const config = checkedConfig();
+    if (!config) return;
+    ui.setOpen(true);
+    ui.saveSettings();
+    const runConv = conv;
+    const instruction = "Continue from the previous tool results without repeating completed work. Use the existing context, then finish the user's original task.";
+    runConv.transcript.push({ role: "user", content: instruction });
+    runConv.log.push({ kind: "note", text: "Continuing from step limit." });
+    ui.appendNote("Continuing from the paused step limit…");
+    const actionPolicy = pendingContinuation.actionPolicy || {};
+    pendingContinuation = null;
+    await runAgentLoop(runConv, actionPolicy, config);
+  }
+
+  async function runAgentLoop(runConv, actionPolicy, config) {
+    const { baseUrl, apiKey, model } = config;
+    const maxTurns = Math.max(4, Math.min(64, parseInt(config.maxTurns, 10) || DEFAULT_MAX_TURNS));
     const runController = new AbortController();
     controller = runController;
     const signal = runController.signal;
     busy = true; ui.setBusy(true);
-    const actionPolicy = deriveActionPolicy(text);
 
     let emptyStreak = 0;
+    let stepLimited = false;
     try {
-      for (let turn = 0; turn < MAX_TURNS; turn++) {
+      for (let turn = 0; turn < maxTurns; turn++) {
         if (signal.aborted) break;
-        ui.setStatus("busy", `Working · step ${turn + 1}`);
+        ui.setStatus("busy", `Working · step ${turn + 1}/${maxTurns}`);
 
         const bubble = ui.beginAssistant();
         let stream;
@@ -234,6 +270,7 @@ export function initAgent(host) {
           }
           persist(runConv);
           if (signal.aborted) break;
+          if (turn === maxTurns - 1) { stepLimited = true; break; }
           continue; // let the model react to the tool results
         }
 
@@ -245,7 +282,10 @@ export function initAgent(host) {
           emptyStreak++;
         }
         // Truncated mid-thought → keep going so the model can finish.
-        if (stream.finishReason === "length" && emptyStreak < 2) continue;
+        if (stream.finishReason === "length" && emptyStreak < 2) {
+          if (turn === maxTurns - 1) stepLimited = true;
+          else continue;
+        }
         // Empty response with no work → avoid spinning.
         if (emptyStreak >= 2) break;
         // Genuine completion.
@@ -256,6 +296,11 @@ export function initAgent(host) {
 
       if (conv === runConv) {
         if (signal.aborted) { ui.appendNote("Stopped."); ui.setStatus("ok", "Stopped"); }
+        else if (stepLimited) {
+          pendingContinuation = { convId: runConv.id, actionPolicy };
+          ui.appendStepLimitNotice(maxTurns);
+          ui.setStatus("paused", "Paused · step limit");
+        }
         else ui.setStatus("ok", "Ready");
       }
     } catch (err) {

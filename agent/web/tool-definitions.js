@@ -22,6 +22,7 @@ function define(name, description, properties = {}, required = [], meta = {}) {
 export const TOOL_DEFINITIONS = Object.freeze([
   define("read_signal_workspace_guide", "Read the authoritative Signal Workspace operating guide. Use when capability, side-effect, image, event, or file semantics are uncertain."),
   define("get_signal_workspace_state", "Return the current project, file, view, processing, channel-focus, analysis, event, and export-capability state.", {}, [], { aliases: ["get_current_context"] }),
+  define("get_workspace_configuration", "Read the current EEG-Master, viewer, image/export, and capability configuration for planning. This tool is read-only and NEVER returns API keys or secrets.", {}, [], { aliases: ["read_workspace_configuration", "get_agent_configuration"] }),
   define("list_signal_sources", "List EEG recordings currently available through the authorized Project Explorer, plus the bundled sample."),
   define("open_signal_source", "Open a bundled sample or an authorized project recording. Only valid when the user explicitly asked to open/switch/compare files.", {
     source: { type: "string", enum: ["sample", "project"] },
@@ -81,7 +82,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
       id: { type: "string" }, onsetSec: { type: "number" }, offsetSec: { type: "number" }, label: { type: "string" },
     }, additionalProperties: false } },
   }, ["operation", "events"], { aliases: ["add_marker", "mark_events"], access: "write", destructive: true }),
-  define("render_signal_images", "Render model-readable signal images with the built-in producer while driving the visible workspace. Supports full/current/range/batch/multiscale and at most one overview plus four detail images. Required by scope: `range` needs a `range` {startSec,endSec} (endSec>startSec); `multiscale` needs `detailRanges`; `batch` needs `batch`. full/current need neither.", {
+  define("render_signal_images", "Render model-readable signal images with the built-in producer while driving the visible workspace. Supports full/current/range/batch/multiscale on small files. On LARGE/windowed files it renders exact raw-sample-backed short windows only: each image must fit the Config maxImageWindowSec (default 15s) and total images must fit maxAgentImages (default 5); use signal_query first, then choose focused windows. Required by scope: `range` needs a `range` {startSec,endSec} (endSec>startSec); `multiscale` needs `detailRanges`; `batch` needs `batch`. full/current need neither.", {
     scope: { type: "string", enum: ["full", "current", "range", "batch", "multiscale"] },
     range: timeRange,
     detailRanges: { type: "array", maxItems: 4, items: timeRange, description: "Order least to most important; the last range remains visible." },

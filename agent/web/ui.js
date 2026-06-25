@@ -9,6 +9,15 @@ import {
 } from "./prompt.js";
 
 const $ = (id) => document.getElementById(id);
+const DEFAULT_MAX_TURNS = 16;
+const MIN_MAX_TURNS = 4;
+const MAX_MAX_TURNS = 64;
+const DEFAULT_MAX_AGENT_IMAGES = 5;
+const MIN_AGENT_IMAGES = 1;
+const MAX_AGENT_IMAGES = 5;
+const DEFAULT_MAX_IMAGE_WINDOW_SEC = 15;
+const MIN_IMAGE_WINDOW_SEC = 5;
+const MAX_IMAGE_WINDOW_SEC = 15;
 
 const EMPTY_STATE_HTML = `
   <div class="ai-empty">
@@ -27,22 +36,56 @@ const EMPTY_STATE_HTML = `
 export function initDrawerUI(host, handlers = {}) {
   let aiOpen = false;
   let aiConfigOpen = false;
+  let suppressFabClick = false;
+  let saveMsgTimer = null;
 
   // ---- settings persistence ----
   function loadSettings() {
     try { return JSON.parse(sessionStorage.getItem(AI_STORAGE_KEY) || "{}"); }
     catch { return {}; }
   }
-  function saveSettings() {
+  function boundedInt(value, fallback, min, max) {
+    const number = parseInt(value, 10);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.max(min, Math.min(max, number));
+  }
+  function currentLimits() {
+    return {
+      maxTurns: boundedInt($("aiMaxTurns")?.value, DEFAULT_MAX_TURNS, MIN_MAX_TURNS, MAX_MAX_TURNS),
+      maxAgentImages: boundedInt($("aiMaxAgentImages")?.value, DEFAULT_MAX_AGENT_IMAGES, MIN_AGENT_IMAGES, MAX_AGENT_IMAGES),
+      maxImageWindowSec: boundedInt($("aiMaxImageWindowSec")?.value, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC),
+    };
+  }
+  function currentFabPosition() {
+    const btn = $("aiBtn");
+    if (!btn?.classList.contains("is-positioned")) return null;
+    const left = parseFloat(btn.style.left);
+    const top = parseFloat(btn.style.top);
+    return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null;
+  }
+  function showSavedFeedback() {
+    const msg = $("aiSaveMsg");
+    if (!msg) return;
+    msg.textContent = "Saved";
+    msg.classList.add("show");
+    clearTimeout(saveMsgTimer);
+    saveMsgTimer = setTimeout(() => msg.classList.remove("show"), 1300);
+  }
+  function saveSettings({ feedback = false } = {}) {
+    const limits = currentLimits();
+    const fab = currentFabPosition();
     const settings = {
       baseUrl: $("aiBaseUrl").value.trim() || DEFAULT_AI_BASE_URL,
       apiKey: $("aiApiKey").value,
       model: selectedModel(false),
       customModel: $("aiCustomModel").value.trim(),
       drawerWidth: parseInt(getComputedStyle(document.documentElement).getPropertyValue("--ai-drawer-w"), 10) || 468,
+      ...limits,
+      ...(fab ? { fabLeft: fab.left, fabTop: fab.top } : {}),
     };
     try { sessionStorage.setItem(AI_STORAGE_KEY, JSON.stringify(settings)); }
     catch { /* session storage can be unavailable in private contexts */ }
+    if (feedback) showSavedFeedback();
   }
 
   // ---- model picker ----
@@ -135,6 +178,74 @@ export function initDrawerUI(host, handlers = {}) {
     const w = Math.max(320, Math.min(720, parseInt(width, 10) || 468));
     document.documentElement.style.setProperty("--ai-drawer-w", `${w}px`);
     requestAnimationFrame(() => host.workspace.resize());
+  }
+  function clampFabPosition(left, top) {
+    const btn = $("aiBtn");
+    const stage = $("stage");
+    const sw = stage?.clientWidth || window.innerWidth;
+    const sh = stage?.clientHeight || window.innerHeight;
+    const bw = btn?.offsetWidth || 168;
+    const bh = btn?.offsetHeight || 52;
+    const pad = 10;
+    return {
+      left: Math.max(pad, Math.min(sw - bw - pad, Number(left) || pad)),
+      top: Math.max(pad, Math.min(sh - bh - pad, Number(top) || pad)),
+    };
+  }
+  function setFabPosition(left, top) {
+    const btn = $("aiBtn");
+    if (!btn) return;
+    const pos = clampFabPosition(left, top);
+    btn.classList.add("is-positioned");
+    btn.style.left = `${Math.round(pos.left)}px`;
+    btn.style.top = `${Math.round(pos.top)}px`;
+  }
+  function bindFabDrag() {
+    const btn = $("aiBtn");
+    const stage = $("stage");
+    if (!btn || !stage) return;
+    let drag = null;
+    btn.addEventListener("pointerdown", (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      const stageRect = stage.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      drag = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        left: btnRect.left - stageRect.left,
+        top: btnRect.top - stageRect.top,
+        moved: false,
+      };
+      btn.setPointerCapture?.(e.pointerId);
+    });
+    btn.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+      drag.moved = true;
+      btn.classList.add("dragging");
+      setFabPosition(drag.left + dx, drag.top + dy);
+      e.preventDefault();
+    });
+    const finish = (e) => {
+      if (!drag || (e?.pointerId !== undefined && e.pointerId !== drag.pointerId)) return;
+      btn.releasePointerCapture?.(drag.pointerId);
+      btn.classList.remove("dragging");
+      if (drag.moved) {
+        suppressFabClick = true;
+        saveSettings();
+        setTimeout(() => { suppressFabClick = false; }, 0);
+      }
+      drag = null;
+    };
+    btn.addEventListener("pointerup", finish);
+    btn.addEventListener("pointercancel", finish);
+    window.addEventListener("resize", () => {
+      const pos = currentFabPosition();
+      if (pos) setFabPosition(pos.left, pos.top);
+    });
   }
   function bindResize() {
     const handle = $("aiResizer");
@@ -302,6 +413,23 @@ export function initDrawerUI(host, handlers = {}) {
     scrollDown(true);
   }
 
+  function appendStepLimitNotice(maxTurns) {
+    clearEmpty();
+    const el = document.createElement("div");
+    el.className = "ai-limit-card";
+    el.innerHTML =
+      `<b>Paused at step limit</b>
+       <p>EEG-Master used ${Number(maxTurns) || DEFAULT_MAX_TURNS} model step(s) and paused before starting another round. Continue keeps the same context and existing tool results.</p>
+       <div class="ai-limit-actions">
+         <button type="button" data-action="continue">Continue</button>
+         <button type="button" data-action="config">Open Config</button>
+       </div>`;
+    el.querySelector('[data-action="continue"]').addEventListener("click", () => handlers.onContinue?.());
+    el.querySelector('[data-action="config"]').addEventListener("click", () => setConfigOpen(true));
+    $("aiMessages").appendChild(el);
+    scrollDown(true);
+  }
+
   function resetMessages() {
     $("aiMessages").innerHTML = EMPTY_STATE_HTML;
     pinned = true; updateJump();
@@ -352,10 +480,25 @@ export function initDrawerUI(host, handlers = {}) {
   }
 
   function getConfig() {
+    const limits = currentLimits();
     return {
       baseUrl: $("aiBaseUrl").value.trim() || DEFAULT_AI_BASE_URL,
       apiKey: $("aiApiKey").value.trim(),
       model: selectedModel(),
+      ...limits,
+    };
+  }
+
+  function getPublicConfig() {
+    const cfg = getConfig();
+    return {
+      baseUrl: cfg.baseUrl,
+      model: cfg.model,
+      apiKeyConfigured: Boolean(cfg.apiKey),
+      maxTurns: cfg.maxTurns,
+      maxAgentImages: cfg.maxAgentImages,
+      maxImageWindowSec: cfg.maxImageWindowSec,
+      storage: "sessionStorage",
     };
   }
 
@@ -365,6 +508,9 @@ export function initDrawerUI(host, handlers = {}) {
   $("aiBaseUrl").value = saved.baseUrl || DEFAULT_AI_BASE_URL;
   $("aiApiKey").value = saved.apiKey || "";
   $("aiCustomModel").value = saved.customModel || "";
+  $("aiMaxTurns").value = boundedInt(saved.maxTurns, DEFAULT_MAX_TURNS, MIN_MAX_TURNS, MAX_MAX_TURNS);
+  $("aiMaxAgentImages").value = boundedInt(saved.maxAgentImages, DEFAULT_MAX_AGENT_IMAGES, MIN_AGENT_IMAGES, MAX_AGENT_IMAGES);
+  $("aiMaxImageWindowSec").value = boundedInt(saved.maxImageWindowSec, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC);
   const savedModel = saved.model || DEFAULT_AI_MODEL;
   setModelSelection(LEGACY_DEFAULT_AI_MODELS.has(savedModel) ? DEFAULT_AI_MODEL : savedModel);
   setDrawerWidth(saved.drawerWidth || 468);
@@ -372,11 +518,25 @@ export function initDrawerUI(host, handlers = {}) {
   syncCustomField();
   const configured = !!(saved.baseUrl && saved.apiKey);
   setStatus(configured ? "ok" : "", configured ? "Ready" : "Not connected");
+  if (Number.isFinite(Number(saved.fabLeft)) && Number.isFinite(Number(saved.fabTop))) {
+    requestAnimationFrame(() => setFabPosition(saved.fabLeft, saved.fabTop));
+  }
 
-  $("aiBtn").addEventListener("click", () => setOpen(!aiOpen));
+  $("aiBtn").addEventListener("click", (e) => {
+    if (suppressFabClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      suppressFabClick = false;
+      return;
+    }
+    setOpen(!aiOpen);
+  });
   $("aiCloseBtn").addEventListener("click", () => setOpen(false));
   $("aiConfigToggle").addEventListener("click", () => setConfigOpen(!aiConfigOpen));
+  $("aiSettingsClose")?.addEventListener("click", () => setConfigOpen(false));
+  $("aiSaveConfigBtn")?.addEventListener("click", () => saveSettings({ feedback: true }));
   bindResize();
+  bindFabDrag();
   function syncConfigStatus() {
     const ready = !!($("aiBaseUrl").value.trim() && $("aiApiKey").value.trim());
     setStatus(ready ? "ok" : "", ready ? "Ready" : "Not connected");
@@ -388,6 +548,16 @@ export function initDrawerUI(host, handlers = {}) {
   });
   $("aiModelSelect").addEventListener("change", () => { syncCustomField(); saveSettings(); });
   $("aiCustomModel").addEventListener("input", saveSettings);
+  ["aiMaxTurns", "aiMaxAgentImages", "aiMaxImageWindowSec"].forEach((id) => {
+    $(id)?.addEventListener("input", saveSettings);
+    $(id)?.addEventListener("change", () => {
+      const limits = currentLimits();
+      $("aiMaxTurns").value = limits.maxTurns;
+      $("aiMaxAgentImages").value = limits.maxAgentImages;
+      $("aiMaxImageWindowSec").value = limits.maxImageWindowSec;
+      saveSettings();
+    });
+  });
   $("aiTestModelsBtn").addEventListener("click", loadModels);
   $("aiSendBtn").addEventListener("click", () => handlers.onSend?.($("aiInput").value));
   $("aiStopBtn").addEventListener("click", () => handlers.onStop?.());
@@ -417,7 +587,17 @@ export function initDrawerUI(host, handlers = {}) {
     handlers.onExport?.(item.dataset.format);
   });
   document.addEventListener("click", (e) => { if (!exportBtn.parentElement.contains(e.target)) closeExportMenu(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeExportMenu(); });
+  document.addEventListener("click", (e) => {
+    if (!aiConfigOpen) return;
+    if ($("aiSettings").contains(e.target) || $("aiConfigToggle").contains(e.target)) return;
+    setConfigOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeExportMenu();
+      if (aiConfigOpen) setConfigOpen(false);
+    }
+  });
   $("aiInput").addEventListener("keydown", (e) => {
     // Ignore Enter while an IME is composing (e.g. confirming a Chinese
     // candidate), so picking a candidate doesn't send a half-finished message.
@@ -432,7 +612,8 @@ export function initDrawerUI(host, handlers = {}) {
   return {
     appendUserMessage, beginAssistant, beginToolCard, appendNote, appendError, resetMessages,
     renderConversation, renderHistory, closeHistory, focusInput,
-    setBusy, setStatus, setOpen, saveSettings, getConfig,
+    appendStepLimitNotice,
+    setBusy, setStatus, setOpen, saveSettings, getConfig, getPublicConfig,
     clearInput: () => { $("aiInput").value = ""; },
   };
 }
@@ -511,6 +692,7 @@ export function toolIcon(name) {
     detect_artifact_candidates: '<path d="M12 3 21 19H3z"/><path d="M12 10v4M12 17h.01"/>',
     get_current_context: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
     get_signal_workspace_state: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    get_workspace_configuration: '<path d="M4 7h10"/><path d="M4 17h10"/><circle cx="18" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
     read_signal_workspace_guide: '<path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 0-3-3z"/><path d="M7 7h8M7 11h8"/>',
     list_signal_sources: '<path d="M3 6h7l2 2h9v10H3z"/>',
     open_signal_source: '<path d="M3 6h7l2 2h9v10H3z"/><path d="m11 11 3 2-3 2z"/>',

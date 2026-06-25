@@ -21,6 +21,7 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (!getToolDefinition(name)) throw new Error(`Unsupported tool: ${requestedName || "empty"}`);
     if (name === "read_signal_workspace_guide") return ok(name, { markdown: await host.readGuide(signal) });
     if (name === "get_signal_workspace_state") return ok(name, host.signal.getState());
+    if (name === "get_workspace_configuration") return ok(name, host.getWorkspaceConfiguration?.(host.getAgentConfiguration?.()) || {});
     if (name === "list_signal_sources") return ok(name, await host.project.listSources());
     if (name === "open_signal_source") {
       requireAction(policy, "fileSwitch");
@@ -53,7 +54,7 @@ export async function runToolCall(host, call, signal, policy = {}) {
       return ok(name, host.workspace.manageEvents(args.operation, args.events));
     }
     if (name === "render_signal_images") {
-      const rendered = await host.artifacts.renderImages(args, signal);
+      const rendered = await host.artifacts.renderImages({ ...args, __agentLimits: host.getAgentConfiguration?.() }, signal);
       return ok(name, rendered.result, { attachments: rendered.attachments || [] });
     }
     if (name === "export_signal_artifact") {
@@ -82,6 +83,7 @@ export function toolTitle(name, args = {}) {
   const map = {
     read_signal_workspace_guide: "Read Signal Workspace guide",
     get_signal_workspace_state: "Read workspace state",
+    get_workspace_configuration: "Read workspace configuration",
     list_signal_sources: "List signal sources",
     open_signal_source: `Open ${args.path || args.source || "signal source"}`,
     inspect_channel: `Inspect channel ${args.channel ?? args.label ?? args.index ?? ""}`.trim(),

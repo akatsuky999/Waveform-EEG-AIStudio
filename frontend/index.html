@@ -351,7 +351,7 @@
         <canvas id="overlay"></canvas>
         <div class="readout" id="readout"></div>
 
-        <button class="ai-fab hidden" id="aiBtn" title="Open EEG-Master AI agent">
+        <button class="ai-fab hidden" id="aiBtn" title="Open EEG-Master AI agent · drag to move">
           <span class="ai-fab-icon" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 3.4V5.6"/>
@@ -431,25 +431,79 @@
         </div>
 
         <section class="ai-settings collapsed" id="aiSettings">
-          <div class="ai-field">
-            <label for="aiBaseUrl">Base URL</label>
-            <input type="url" id="aiBaseUrl" placeholder="https://api.openai.com or your provider" autocomplete="off" />
+          <div class="ai-settings-window-head">
+            <div>
+              <b>Agent Config</b>
+            </div>
+            <button class="ai-icon-btn" id="aiSettingsClose" title="Close Config" aria-label="Close Config">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
           </div>
-          <div class="ai-field">
-            <label for="aiApiKey">API Key</label>
-            <input type="password" id="aiApiKey" placeholder="Session only" autocomplete="off" />
+
+          <div class="ai-settings-card provider">
+            <div class="ai-settings-card-head">
+              <div>
+                <b>Provider</b>
+              </div>
+              <span class="ai-config-pill">No key persistence</span>
+            </div>
+            <div class="ai-field full">
+              <label for="aiBaseUrl">Base URL</label>
+              <input type="url" id="aiBaseUrl" placeholder="https://api.openai.com or your provider" autocomplete="off" />
+            </div>
+            <div class="ai-field full">
+              <label for="aiApiKey">API Key</label>
+              <input type="password" id="aiApiKey" placeholder="Stored in this browser session only" autocomplete="off" />
+            </div>
+            <div class="ai-field-row">
+              <div class="ai-field">
+                <label for="aiModelSelect">Model</label>
+                <select id="aiModelSelect"></select>
+              </div>
+              <div class="ai-field hidden" id="aiCustomWrap">
+                <label for="aiCustomModel">Custom model</label>
+                <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
+              </div>
+            </div>
+            <div class="ai-actions-row">
+              <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
+              <span id="aiConfigMsg"></span>
+            </div>
           </div>
-          <div class="ai-field">
-            <label for="aiModelSelect">Model</label>
-            <select id="aiModelSelect"></select>
+
+          <div class="ai-settings-card">
+            <div class="ai-settings-card-head">
+              <div>
+                <b>Loop Control</b>
+              </div>
+            </div>
+            <div class="ai-field compact">
+              <label for="aiMaxTurns">Max steps</label>
+              <input type="number" id="aiMaxTurns" min="4" max="64" step="1" inputmode="numeric" />
+            </div>
           </div>
-          <div class="ai-field hidden" id="aiCustomWrap">
-            <label for="aiCustomModel">Custom model</label>
-            <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
+
+          <div class="ai-settings-card">
+            <div class="ai-settings-card-head">
+              <div>
+                <b>Image Budget</b>
+              </div>
+            </div>
+            <div class="ai-field-row">
+              <div class="ai-field compact">
+                <label for="aiMaxAgentImages">Max images</label>
+                <input type="number" id="aiMaxAgentImages" min="1" max="5" step="1" inputmode="numeric" />
+              </div>
+              <div class="ai-field compact">
+                <label for="aiMaxImageWindowSec">Window seconds</label>
+                <input type="number" id="aiMaxImageWindowSec" min="5" max="15" step="1" inputmode="numeric" />
+              </div>
+            </div>
           </div>
-          <div class="ai-actions-row">
-            <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
-            <span id="aiConfigMsg"></span>
+
+          <div class="ai-settings-footer">
+            <span id="aiSaveMsg" aria-live="polite"></span>
+            <button class="ai-save-btn" id="aiSaveConfigBtn" type="button">Save Config</button>
           </div>
         </section>
 

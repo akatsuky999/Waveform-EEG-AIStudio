@@ -2,6 +2,8 @@ import { requestExport, requestImageSet } from "./api.js";
 import { downloadBlob, downloadText } from "./util.js";
 import { buildSignalImagePlan } from "./signal-image-plan.js";
 
+const DEFAULT_AGENT_IMAGE_LIMITS = { maxAgentImages: 5, maxImageWindowSec: 15 };
+
 const FILTER_PRESETS = {
   review: { low: 1, high: 70 }, seizure: { low: 1, high: 40 },
   sleep: { low: 0.3, high: 35 }, hfo: { low: 80, high: 250 },
@@ -46,8 +48,46 @@ function imageConfig(viewer, series, options) {
     fs: series.fs,
     labels: series.labels,
     colors: series.colors,
-    events: viewer.events,
+    events: options.events || viewer.events,
     provenance: series.provenance,
+  };
+}
+
+function readInputValue(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  if (el.type === "checkbox") return Boolean(el.checked);
+  if (el.type === "number") return Number.isFinite(Number(el.value)) ? Number(el.value) : null;
+  return el.value ?? null;
+}
+
+function readExportConfiguration() {
+  return {
+    image: {
+      width: readInputValue("imageWidth"),
+      height: readInputValue("imageHeight"),
+      autoHeight: readInputValue("imageAutoHeight"),
+      rowHeight: readInputValue("imageRowHeight"),
+      labelFontSizePx: readInputValue("imageLabelSize"),
+      ratioLock: readInputValue("imageRatioLock"),
+      viewerBackground: readInputValue("viewerBgMode"),
+      trainingPalette: readInputValue("trainingPalette"),
+      trainingMonoColor: readInputValue("trainingMonoColor"),
+    },
+  };
+}
+
+function clampInt(value, fallback, min, max) {
+  const number = parseInt(value, 10);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function agentImageLimits(args = {}) {
+  const provided = args.__agentLimits || {};
+  return {
+    maxAgentImages: clampInt(provided.maxAgentImages, DEFAULT_AGENT_IMAGE_LIMITS.maxAgentImages, 1, 5),
+    maxImageWindowSec: clampInt(provided.maxImageWindowSec, DEFAULT_AGENT_IMAGE_LIMITS.maxImageWindowSec, 5, 15),
   };
 }
 
@@ -65,6 +105,7 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
       projectFiles: explorer.state.permission === "granted",
       imageProducer: true,
       multiScaleImages: { overview: 1, details: 4 },
+      largeRecordingImages: viewer.windowed ? { mode: "short-window-exact", fullOverview: false } : { mode: "full-array" },
       eventWritesRequireExplicitUserIntent: true,
       fileSwitchRequiresExplicitUserIntent: true,
       downloadsRequireExplicitUserIntent: true,
@@ -205,15 +246,143 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
     return displayedToSeriesIndices(series, source, expanded);
   }
 
+  function focusWindowedSeriesIndices(args, series) {
+    if (args.channelScope === "all") return series.arrays.map((_array, index) => index);
+    const refs = args.channelScope === "selected"
+      ? (Array.isArray(args.channels) && args.channels.length ? args.channels : [viewer.selectedChannel ?? 0])
+      : viewer.visibleChannels;
+    const resolved = refs.map((ref) => resolveChannel(viewer, ref)).filter(Number.isInteger);
+    const expanded = args.channelScope === "selected"
+      ? expandNeighbors(resolved, Math.max(0, Math.min(8, Number(args.neighborRadius) || 0)), viewer.nChannels)
+      : resolved;
+    const wantedSources = new Set(expanded.map((index) => viewer.channelMeta[index]?.sourceIndex ?? index));
+    const bySource = (series.sourceIndices || []).map((sourceIndex, index) => wantedSources.has(sourceIndex) ? index : -1).filter((index) => index >= 0);
+    if (bySource.length) return bySource;
+    const wantedLabels = new Set(expanded.map((index) => String(viewer.channelMeta[index]?.label || "").toLowerCase()));
+    const byLabel = (series.labels || []).map((label, index) => wantedLabels.has(String(label).toLowerCase()) ? index : -1).filter((index) => index >= 0);
+    return byLabel.length ? byLabel : series.arrays.map((_array, index) => index);
+  }
+
+  function shiftedEventsForView(view) {
+    const start = view.startSec;
+    const end = view.endSec;
+    return viewer.events
+      .filter((event) => (event.offsetSec ?? event.onsetSec) >= start && event.onsetSec <= end)
+      .map((event) => ({
+        ...event,
+        onsetSec: Math.max(0, event.onsetSec - start),
+        offsetSec: event.offsetSec == null ? event.offsetSec : Math.max(0, event.offsetSec - start),
+      }));
+  }
+
+  function assertImagePlanBudget(views, limits, { windowed = false } = {}) {
+    if (views.length > limits.maxAgentImages) {
+      throw new Error(`render_signal_images may attach at most ${limits.maxAgentImages} image(s) in the current Config. Ask for fewer windows or rank candidates first.`);
+    }
+    for (const view of views) {
+      const span = view.endSec - view.startSec;
+      if (windowed && span > limits.maxImageWindowSec + 1e-6) {
+        throw new Error(`Large-recording image windows must be ≤ ${limits.maxImageWindowSec}s. Requested ${span.toFixed(3)}s (${view.startSec.toFixed(3)}–${view.endSec.toFixed(3)}s); use signal_query to choose shorter key segments.`);
+      }
+    }
+  }
+
+  async function renderWindowedImages(args, plan, source, limits, signalAbort) {
+    let views = plan.views.filter((view) => view.role !== "overview");
+    if (!views.length) {
+      throw new Error("Large-recording image rendering needs short current/range/batch/detail windows. Full-recording overview images are disabled; first locate focused windows, then request current/range/batch/multiscale details.");
+    }
+    assertImagePlanBudget(views, limits, { windowed: true });
+    const images = [];
+    for (const view of views) {
+      if (args.channelScope === "selected") workspace.setView({
+        channels: Array.isArray(args.channels) && args.channels.length ? args.channels : [viewer.selectedChannel ?? 0],
+        neighborRadius: args.neighborRadius,
+      });
+      workspace.setView({ startSec: view.startSec, endSec: view.endSec });
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const series = await viewer.getWindowedExportSeries({
+        source,
+        channels: "all",
+        startSec: view.startSec,
+        endSec: view.endSec,
+        signal: signalAbort,
+      });
+      const detailSeriesIndices = focusWindowedSeriesIndices(args, series);
+      const duration = view.endSec - view.startSec;
+      const payload = await requestImageSet(series.arrays, imageConfig(viewer, series, {
+        views: [{
+          ...view,
+          startSec: 0,
+          endSec: duration,
+          channelIndices: detailSeriesIndices,
+          absoluteStartSec: view.startSec,
+          absoluteEndSec: view.endSec,
+        }],
+        width: args.width || 1600,
+        height: args.height || 1200,
+        autoHeight: args.autoHeight ?? true,
+        rowHeight: args.rowHeight || 32,
+        labelFontSizePx: args.labelFontSizePx || 12,
+        style: args.style || "viewer",
+        palette: args.palette || "current",
+        monoColor: args.monoColor || "#111111",
+        background: "#ffffff",
+        showLabels: args.showLabels ?? true,
+        showEvents: args.showEvents ?? false,
+        showGrid: args.showGrid ?? true,
+        lineWidth: args.style === "training" ? 0.65 : 0.8,
+        events: shiftedEventsForView(view),
+      }), { signal: signalAbort });
+      const rendered = (payload.images || [])[0];
+      if (rendered) {
+        images.push({
+          ...rendered,
+          startSec: view.startSec,
+          endSec: view.endSec,
+          durationSec: duration,
+          role: view.role,
+          channels: rendered.channels,
+        });
+      }
+    }
+    return images;
+  }
+
   const artifacts = {
     async renderImages(args = {}, signalAbort) {
       if (!viewer.header) throw new Error("Load an EEG recording before rendering images.");
+      const limits = agentImageLimits(args);
       const plan = buildSignalImagePlan({
         ...args,
         duration: viewer.duration,
         currentRange: { startSec: viewer.tStart, endSec: viewer.tEnd },
       });
       const source = args.source || "processed";
+
+      if (viewer.windowed) {
+        const images = await renderWindowedImages(args, plan, source, limits, signalAbort);
+        return {
+          result: {
+            scope: args.scope,
+            source,
+            imageCount: images.length,
+            totalWindows: plan.totalWindows,
+            limits,
+            exact: true,
+            mode: "windowed-short-window",
+            views: images.map(({ dataUrl: _dataUrl, ...item }) => item),
+            finalView: state().view,
+          },
+          attachments: images.map((item) => ({
+            kind: "image", dataUrl: item.dataUrl,
+            label: `${item.role} ${item.startSec.toFixed(3)}-${item.endSec.toFixed(3)}s`,
+            metadata: { role: item.role, startSec: item.startSec, endSec: item.endSec, channels: item.channels, windowed: true },
+          })),
+        };
+      }
+
+      assertImagePlanBudget(plan.views, limits, { windowed: false });
       const series = viewer.getExportSeries({ source, channels: "all" });
       const detailSeriesIndices = focusIndices(args, series, source);
       const overviewSeriesIndices = args.channelScope === "selected"
@@ -314,6 +483,39 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
 
   return {
     signal, workspace, project, artifacts,
+    getWorkspaceConfiguration(agentConfig = null) {
+      const ctx = state();
+      const view = ctx.view || {};
+      const settings = ctx.settings || {};
+      return {
+        agent: agentConfig || null,
+        model: agentConfig?.model || null,
+        viewer: {
+          loaded: Boolean(viewer.header),
+          file: ctx.file || null,
+          view,
+          processing: settings,
+          selectedChannel: ctx.selectedChannel || null,
+          visibleChannelCount: Array.isArray(ctx.visibleChannels) ? ctx.visibleChannels.length : 0,
+        },
+        export: readExportConfiguration(),
+        capabilities: {
+          ...ctx.capabilities,
+          windowed: Boolean(ctx.windowed),
+          shortWindowImageRendering: viewer.windowed
+            ? { available: true, maxImages: agentConfig?.maxAgentImages ?? 5, maxWindowSec: agentConfig?.maxImageWindowSec ?? 15 }
+            : { available: true, mode: "full-array" },
+          currentViewPng: Boolean(viewer.header),
+          fullArrayCsvAndDataExport: Boolean(viewer.header && !viewer.windowed),
+          downloadsRequireExplicitUserIntent: true,
+        },
+        safety: {
+          apiKeyReturned: false,
+          downloadsDisabledForAgentUnlessExplicitlyRequested: true,
+          exportToolHasSideEffects: true,
+        },
+      };
+    },
     async readGuide(signalAbort) {
       const response = await fetch("/api/ai/knowledge/signal-workspace", { signal: signalAbort });
       if (!response.ok) throw new Error("Signal Workspace guide is unavailable.");

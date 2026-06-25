@@ -73,6 +73,33 @@ export function initExports(ctx) {
   $("csvBtn").addEventListener("click", () => downloadText(viewer.exportVisibleCSV(), "waveform-visible.csv", "text/csv"));
   $("eventsBtn").addEventListener("click", () => downloadText(viewer.exportMarkersJSON(), "waveform-events.json", "application/json"));
 
+  // Snapshot the visible canvas — works for any file size (large recordings only
+  // need the current window), so it stays enabled in windowed mode.
+  $("pngViewBtn").addEventListener("click", () => {
+    if (!viewer.header) return;
+    const a = document.createElement("a");
+    a.href = viewer.exportPNG();
+    a.download = `${(viewer.baseHeader?.fileName || "waveform").replace(/\.[^.]+$/, "")}-view.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  // Large (windowed) recordings can't run the full-array image / data / CSV exports
+  // (the store ships windows, not whole arrays) — gray + freeze those, keep the
+  // current-view PNG and events JSON usable.
+  const WINDOWED_DISABLED = ["csvBtn", "viewerPreviewBtn", "viewerImageBtn",
+    "trainingPreviewBtn", "trainingCurrentBtn", "trainingBatchBtn", "dataExportBtn"];
+  ctx.applyExportWindowedMode = (windowed) => {
+    for (const id of WINDOWED_DISABLED) {
+      const el = $(id);
+      if (!el) continue;
+      el.disabled = !!windowed;
+      el.classList.toggle("is-frozen", !!windowed);
+    }
+    status(windowed
+      ? "Large recording: image / data export coming soon — use Current view PNG or Events JSON."
+      : "");
+  };
+
   $("viewerBgMode").addEventListener("change", () => {
     $("viewerCustomBgWrap").classList.toggle("hidden", $("viewerBgMode").value !== "custom");
   });

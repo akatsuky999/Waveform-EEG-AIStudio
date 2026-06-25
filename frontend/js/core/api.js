@@ -34,6 +34,25 @@ export async function fetchWindow(token, startSec, endSec, maxColumns, channels,
   return parseWindowTile(await res.arrayBuffer());
 }
 
+/** Fetch the exact raw samples for a window (per-channel Float32Arrays), used to
+ *  run the full DSP pipeline / frequency analysis on a large recording's window. */
+export async function fetchSamples(token, startSec, endSec, channels, { signal } = {}) {
+  const body = { token, op: "samples", startSec, endSec };
+  if (channels && channels.length) body.channels = channels;
+  const res = await fetch("/api/signal/query", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to fetch signal samples.");
+  }
+  const { header, data } = parseWindowTile(await res.arrayBuffer());
+  const n = header.nSamples;
+  const arrays = header.channels.map((_c, idx) => data.subarray(idx * n, (idx + 1) * n));
+  return { header, arrays };
+}
+
 /** Stream a large recording straight to the out-of-core store (the file body is
  *  streamed by the browser — never read whole into memory) and poll until ready.
  *  Returns {windowed, meta, dataToken}. */

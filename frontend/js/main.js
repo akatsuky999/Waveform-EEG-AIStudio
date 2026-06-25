@@ -227,6 +227,7 @@ function onLoaded(header, { preserveProcessing = false, montageFallback = false 
   $("aiBtn").classList.remove("hidden");
   setControlsEnabled(true);
   setExportEnabled(true);
+  ctx.applyExportWindowedMode?.(viewer.windowed); // gray full-array exports for large files
   ctx.syncExportDimensions?.();
   requestAnimationFrame(() => viewer.resize());
 

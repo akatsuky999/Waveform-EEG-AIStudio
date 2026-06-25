@@ -193,6 +193,10 @@
 .export-buttons button:hover { border-color: var(--accent); color: var(--accent-ink); }
 .export-buttons button.export-accent { color: #fff; background: var(--accent); border-color: var(--accent); }
 .export-buttons button.export-accent:hover { color: #fff; background: var(--accent-ink); border-color: var(--accent-ink); }
+/* Frozen on large (windowed) recordings: visibly grayed + non-interactive. */
+.export-buttons button.is-frozen, .export-primary.is-frozen {
+  opacity: .45; cursor: not-allowed; filter: grayscale(0.6); pointer-events: none;
+}
 .export-primary { width: 100%; margin-top: 11px; color: #fff; background: var(--accent); border-color: var(--accent); }
 .export-primary:hover { background: var(--accent-ink); }
 .batch-settings { margin-top: 9px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.35); }

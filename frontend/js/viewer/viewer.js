@@ -26,9 +26,14 @@ import { buildMontage, montageLabel } from "./montage.js";
 import {
   compareEvents, createEvent, legacyMarkersFromEvents, serializeEventsDocument,
 } from "../core/events.js";
-import { fetchWindow } from "../core/api.js";
+import { fetchWindow, fetchSamples } from "../core/api.js";
 
 const GROUP_COLORS = ["#c45f3c", "#5f86b3", "#6f8350", "#b08240", "#8a6aa0", "#4f8a86", "#b5654a", "#7a7d52"];
+
+// Windowed DSP budget: when filter/montage/norm/diff is active and the visible
+// window's (samples × source-channels) fits this, we fetch the raw window and run
+// the full pipeline on it; beyond it the overview stays an unprocessed LoD view.
+const PROC_BUDGET_VALUES = 4_000_000;
 
 const colorCache = new Map();
 function toThreeColor(css) {
@@ -113,6 +118,12 @@ export class WaveformViewer {
     this._tileTimer = null;
     this._tileRange = null;     // [start,end] the current geometry was requested for
     this._tileCache = new Map();// small LRU of recent tiles
+    // Processed-window sub-mode: when DSP is active and the window fits the budget,
+    // we load the raw window and run the full pipeline on it (filter/montage/norm/
+    // diff + frequency analysis). `_sampleOffset` shifts geometry X to absolute time.
+    this._procMode = false;
+    this._sampleOffset = 0;
+    this._srcModel = null;      // saved source-channel model (to restore in tile mode)
 
     this.mouse = { x: -1, y: -1, inside: false };
     this.onReadout = null;
@@ -206,6 +217,10 @@ export class WaveformViewer {
     this.windowMeta = null;
     this.tile = null;
     this._tileRange = null;
+    this._procMode = false;
+    this._sampleOffset = 0;
+    this._srcModel = null;
+    this._tileSeq++;            // invalidate any in-flight windowed fetch
     clearTimeout(this._tileTimer);
     const settings = preserveSettings ? {
       diffOrder: this.diffOrder,
@@ -293,6 +308,16 @@ export class WaveformViewer {
       || median(this.channelMeta.map((c) => c.std).filter((s) => s > 0)) || 1;
     this.autoGainWorld = 0.32 / robust;
 
+    // Snapshot the source-channel model so tile (overview) mode can be restored
+    // after a montage in processed-window mode changed the channel set.
+    this._srcModel = {
+      channelMeta: this.channelMeta, channelColor: this.channelColor,
+      channelStats: this.channelStats, channelFreqs: this.channelFreqs,
+      nChannels: this.nChannels, autoGainWorld: this.autoGainWorld,
+    };
+    this._procMode = false;
+    this._sampleOffset = 0;
+
     for (const ln of this.lines) { ln.geometry.dispose(); ln.material.dispose(); this.scene.remove(ln); }
     this.lines = [];
     this._tileCache.clear();
@@ -300,7 +325,7 @@ export class WaveformViewer {
     this.tile = null;
     this._rebuildOrder();
     this.resetView();      // tStart=0, tEnd=duration, render()
-    this._fetchTile();     // initial overview tile
+    this._refreshWindowed(); // initial overview tile (or processed window if DSP on)
     this._emitSelection();
     this._emitChannels();
     this._emitEvents();
@@ -320,7 +345,7 @@ export class WaveformViewer {
 
   _scheduleTile() {
     clearTimeout(this._tileTimer);
-    this._tileTimer = setTimeout(() => this._fetchTile(), 70);
+    this._tileTimer = setTimeout(() => this._refreshWindowed(), 70);
   }
 
   async _fetchTile() {
@@ -342,6 +367,75 @@ export class WaveformViewer {
     } catch (err) {
       if (err?.name !== "AbortError") { /* keep the previous geometry on a blip */ }
     }
+  }
+
+  _dspActive() {
+    const fo = this.filterOpts;
+    return (this.montageMode && this.montageMode !== "raw")
+      || this.diffOrder > 0
+      || (this.normMethod && this.normMethod !== "none")
+      || !!(fo && (Number(fo.low) || Number(fo.high) || (fo.notch && fo.notch !== "off")));
+  }
+
+  // Windowed refresh: choose the processed raw window (if DSP is on and the window
+  // fits the budget) or the unprocessed LoD tile (overview / no DSP).
+  async _refreshWindowed() {
+    if (!this.windowed || !this.windowToken) return;
+    const spanSamples = Math.max(1, Math.round((this.tEnd - this.tStart) * this.fs));
+    const nSource = this.windowMeta?.nChannels || (this._srcModel?.nChannels ?? this.nChannels);
+    if (this._dspActive() && spanSamples * nSource <= PROC_BUDGET_VALUES) {
+      return this._fetchProcessedWindow();
+    }
+    if (this._procMode) this._restoreSourceModel();
+    this._procMode = false;
+    this._sampleOffset = 0;
+    this.dispChannels = [];
+    return this._fetchTile();
+  }
+
+  // Restore the source-channel model after a montage in processed mode changed it.
+  _restoreSourceModel() {
+    const m = this._srcModel;
+    if (!m) return;
+    this.channelMeta = m.channelMeta;
+    this.channelColor = m.channelColor;
+    this.channelStats = m.channelStats;
+    this.channelFreqs = m.channelFreqs;
+    this.nChannels = m.nChannels;
+    this.autoGainWorld = m.autoGainWorld;
+    this.nSamples = this.windowMeta.nSamples;
+    this.nDisp = this.nSamples;
+    this.hiddenChannels.clear(); this.soloChannel = null; this.pinnedChannel = null;
+    if (this.selectedChannel === null || this.selectedChannel >= this.nChannels) this.selectedChannel = 0;
+    this._rebuildOrder();
+  }
+
+  // Load the visible raw window and run the EXISTING full pipeline on it, so
+  // filter / montage / normalization / differencing — and frequency analysis —
+  // all apply exactly. `_sampleOffset` shifts geometry X back to absolute time.
+  async _fetchProcessedWindow() {
+    const t0 = this.tStart, t1 = this.tEnd;
+    this._tileRange = [t0, t1];
+    const seq = ++this._tileSeq;
+    let res;
+    try {
+      res = await fetchSamples(this.windowToken, t0, t1, null);
+    } catch (err) {
+      if (err?.name !== "AbortError") { /* keep previous geometry on a blip */ }
+      return;
+    }
+    if (seq !== this._tileSeq) return;
+    const wasProc = this._procMode;
+    this._procMode = true;
+    this._sampleOffset = res.header.startSample;
+    this.tile = null;
+    this.baseRawChannels = res.arrays;
+    this.baseHeader = this.windowMeta;
+    if (!wasProc) { this.hiddenChannels.clear(); this.soloChannel = null; this.pinnedChannel = null; }
+    this._rebuildSourceChannels({ fallbackInvalidMontage: true }); // filter+montage → pipeline → lines
+    if (this.selectedChannel === null || this.selectedChannel >= this.nChannels) this.selectedChannel = 0;
+    this.render();
+    this._emitSelection();
   }
 
   // Exact client-side DSP applied to a raw (deep-zoom) window. Montage is a
@@ -379,20 +473,25 @@ export class WaveformViewer {
         geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
         line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: toThreeColor(this.channelColor[c]) }));
       } else {
-        // aggregate: a vertical min→max segment per column (the M4 min/max overview)
+        // aggregate: a CONNECTED boustrophedon min/max envelope — alternate the
+        // (min,max) order each column so consecutive columns join along the top /
+        // bottom envelope. Clean channels read as a continuous line; busy channels
+        // as a filled band — no disconnected "comb"/"grass" (vs old LineSegments).
         const nCols = h.nCols;
         const step = (h.endSample - h.startSample) / nCols;
         const positions = new Float32Array(nCols * 2 * 3);
         const base = c * nCols * 2;
         for (let j = 0; j < nCols; j++) {
           const x = h.startSample + j * step;
+          const lo = data[base + j * 2], hi = data[base + j * 2 + 1];
           const k = j * 6;
-          positions[k] = x; positions[k + 1] = data[base + j * 2];     // min
-          positions[k + 3] = x; positions[k + 4] = data[base + j * 2 + 1]; // max
+          positions[k] = x; positions[k + 3] = x;
+          if ((j & 1) === 0) { positions[k + 1] = lo; positions[k + 4] = hi; }
+          else { positions[k + 1] = hi; positions[k + 4] = lo; }
         }
         const geom = new THREE.BufferGeometry();
         geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        line = new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ color: toThreeColor(this.channelColor[c]) }));
+        line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: toThreeColor(this.channelColor[c]) }));
       }
       line.position.y = -c;
       line.scale.y = g;
@@ -477,11 +576,12 @@ export class WaveformViewer {
   _buildLines() {
     for (const ln of this.lines) { ln.geometry.dispose(); ln.material.dispose(); this.scene.remove(ln); }
     this.lines = [];
+    const ox = this._sampleOffset || 0;  // absolute-time offset for a processed window (0 for whole-file)
     for (let c = 0; c < this.nChannels; c++) {
       const sig = this.dispChannels[c];
       const n = sig.length;
       const positions = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) { positions[i * 3] = i; positions[i * 3 + 1] = sig[i]; }
+      for (let i = 0; i < n; i++) { positions[i * 3] = ox + i; positions[i * 3 + 1] = sig[i]; }
       const geom = new THREE.BufferGeometry();
       geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
       const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: toThreeColor(this.channelColor[c]) }));
@@ -547,41 +647,41 @@ export class WaveformViewer {
 
   setDiffOrder(n) {
     this.diffOrder = n;
-    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
+    if (this.windowed) { this._refreshWindowed(); return; }
     this._applyPipeline();
     this.setGain(this.gainMult);
   }
 
   setNorm(method) {
     this.normMethod = method;
-    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
+    if (this.windowed) { this._refreshWindowed(); return; }
     this._applyPipeline();
     this.setGain(this.gainMult);
   }
 
   setNormOpts(opts) {
     Object.assign(this.normOpts, opts);
-    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
+    if (this.windowed) { this._refreshWindowed(); return; }
     this._applyPipeline();
     this.setGain(this.gainMult);
   }
 
   setFilter(opts) {
     Object.assign(this.filterOpts, opts);
-    if (this.windowed) { this._buildLinesFromTile(); this.setGain(this.gainMult); return; }
+    if (this.windowed) { this._refreshWindowed(); return; }
     this._rebuildSourceChannels();
     this.setGain(this.gainMult);
   }
 
   setMontageMode(mode) {
     this.montageMode = typeof mode === "boolean" ? (mode ? "bipolar" : "raw") : (mode || "raw");
-    // Montage on large recordings is a follow-up (needs server-side referencing);
-    // keep the raw view and don't touch the full-array pipeline.
-    if (this.windowed) { this.montageMode = "raw"; return; }
     this.hiddenChannels.clear();
     this.soloChannel = null;
     this.pinnedChannel = null;
     this.selectedChannel = 0;
+    // Large recording: montage applies on the processed window (when zoomed in);
+    // at extreme overview it stays unprocessed with a "zoom in" badge.
+    if (this.windowed) { this._refreshWindowed(); this._emitSelection(); return; }
     this._rebuildSourceChannels();
     this.resetView();
     this.setGain(this.gainMult);
@@ -1169,22 +1269,28 @@ export class WaveformViewer {
     ctx.font = '10px "Inter", sans-serif';
     ctx.fillText("time (s)", G + 8, plotBottom + this.axisH / 2);
 
-    // Windowed mode: badge whether the on-screen geometry is exact (raw samples)
-    // or an approximate LoD/aggregate overview — the result-contract made visible.
-    if (this.windowed && this.tile?.header) {
-      const h = this.tile.header;
-      const exact = !!h.exact;
-      const label = exact
-        ? "EXACT"
-        : `OVERVIEW ≈${(((h.resolution || 1) / this.fs) * 1000).toFixed(0)} ms/col`;
-      ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
-      ctx.textAlign = "left"; ctx.textBaseline = "middle";
-      const bw = ctx.measureText(label).width + 16, bh = 17;
-      const bx = plotRight - bw - 8, by = 7;
-      ctx.fillStyle = exact ? "rgba(71,112,81,.16)" : "rgba(176,130,64,.18)";
-      this._roundRect(ctx, bx, by, bw, bh, 8); ctx.fill();
-      ctx.fillStyle = exact ? "#477051" : "#8a6418";
-      ctx.fillText(label, bx + 8, by + bh / 2 + 0.5);
+    // Windowed mode: badge what the on-screen geometry is — processed/exact vs an
+    // approximate LoD overview (and, when DSP is on but the window is too wide, a
+    // hint to zoom in) — the exact/approx contract made visible.
+    if (this.windowed) {
+      let label = null, ok = false;
+      if (this._procMode) { label = "EXACT · processed"; ok = true; }
+      else if (this._dspActive()) { label = "ZOOM IN TO APPLY filter/montage"; ok = false; }
+      else if (this.tile?.header) {
+        const h = this.tile.header;
+        ok = !!h.exact;
+        label = ok ? "EXACT" : `OVERVIEW ≈${(((h.resolution || 1) / this.fs) * 1000).toFixed(0)} ms/col`;
+      }
+      if (label) {
+        ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        const bw = ctx.measureText(label).width + 16, bh = 17;
+        const bx = plotRight - bw - 8, by = 7;
+        ctx.fillStyle = ok ? "rgba(71,112,81,.16)" : "rgba(176,130,64,.18)";
+        this._roundRect(ctx, bx, by, bw, bh, 8); ctx.fill();
+        ctx.fillStyle = ok ? "#477051" : "#8a6418";
+        ctx.fillText(label, bx + 8, by + bh / 2 + 0.5);
+      }
     }
 
     this._updateScrollbars(plotBottom, plotRight);
@@ -1379,10 +1485,15 @@ export class WaveformViewer {
 
     const row = Math.round(-this.screenToWorldY(y));
     const ch = this.visibleChannels[row];
-    const i = Math.round(this.screenToWorldX(x));
+    const i = Math.round(this.screenToWorldX(x));          // absolute sample index
+    const ri = this._procMode ? i - (this._sampleOffset || 0) : i; // index into dispChannels
     let info = null;
-    if (ch !== undefined && i >= 0 && i < this.nDisp) {
-      const value = this.windowed ? this._tileValueAt(ch, i) : this.dispChannels[ch]?.[i];
+    const inRange = this._procMode
+      ? (ri >= 0 && ri < this.nDisp)
+      : (i >= 0 && i < this.nDisp);
+    if (ch !== undefined && inRange) {
+      const value = this._procMode ? this.dispChannels[ch]?.[ri]
+        : this.windowed ? this._tileValueAt(ch, i) : this.dispChannels[ch]?.[i];
       if (value !== null && value !== undefined) {
         info = {
           x, y,
@@ -1391,7 +1502,7 @@ export class WaveformViewer {
           time: i / this.fs,
           value,
           unit: this.unit,
-          freq: this.windowed ? NaN : this.channelFreqs[ch],
+          freq: (this.windowed && !this._procMode) ? NaN : this.channelFreqs[ch],
         };
         const by = this.worldToScreenY(-row);
         ctx.fillStyle = info.color;

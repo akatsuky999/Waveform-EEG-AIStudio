@@ -81,7 +81,8 @@ def _clean_env(workdir: str) -> dict:
 
 
 def _run_worker(code: str, dataset: dict, workspace: dict | None = None,
-                window_start_sec: float = 0.0) -> dict:
+                window_start_sec: float = 0.0,
+                window_end_sec: float | None = None) -> dict:
     """Blocking: set up a work dir, run the worker, collect its result."""
     with tempfile.TemporaryDirectory(prefix="eeg-sandbox-") as workdir:
         np.save(os.path.join(workdir, "_data.npy"), np.ascontiguousarray(dataset["array"], dtype=np.float32))
@@ -91,6 +92,7 @@ def _run_worker(code: str, dataset: dict, workspace: dict | None = None,
             "groups": dataset["groups"],
             "workspace": workspace if isinstance(workspace, dict) else {},
             "window_start_sec": float(window_start_sec),
+            "window_end_sec": None if window_end_sec is None else float(window_end_sec),
             "limits": {"cpuSeconds": CPU_SECONDS, "addressBytes": ADDRESS_BYTES},
         }
         with open(os.path.join(workdir, "_meta.json"), "w", encoding="utf-8") as handle:
@@ -172,6 +174,7 @@ async def ai_execute(request: Request) -> Response:
     workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
     dataset = get_dataset(token)
     window_start_sec = 0.0
+    window_end_sec = None
 
     # Large recording → read only the requested window from the out-of-core store.
     if dataset is None and signal_store is not None and signal_store.get_meta(token) is not None:
@@ -191,6 +194,7 @@ async def ai_execute(request: Request) -> Response:
         dataset = {"array": arr, "fs": info["fs"], "labels": info["labels"],
                    "groups": [group_of(label) for label in info["labels"]]}
         window_start_sec = info["startSec"]
+        window_end_sec = info["endSec"]
 
     if dataset is None:
         return _json_error(
@@ -198,5 +202,7 @@ async def ai_execute(request: Request) -> Response:
             409,
         )
 
-    result = await asyncio.to_thread(_run_worker, code, dataset, workspace, window_start_sec)
+    result = await asyncio.to_thread(
+        _run_worker, code, dataset, workspace, window_start_sec, window_end_sec
+    )
     return JSONResponse(result)

@@ -197,6 +197,50 @@
   content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
   box-shadow: 0 0 0 3px rgba(199,95,62,.12);
 }
+.ai-settings-card.skills { gap: 10px; }
+.ai-skill-list { display: flex; flex-direction: column; gap: 7px; }
+.ai-skill-empty {
+  padding: 10px; border: 1px dashed rgba(187,176,157,.75); border-radius: 9px;
+  color: var(--ink-soft); font-size: 11px; line-height: 1.35; background: rgba(255,255,255,.48);
+}
+.ai-skill-row {
+  display: grid; grid-template-columns: 34px 1fr; gap: 9px; align-items: start;
+  padding: 9px; border: 1px solid rgba(224,215,199,.82); border-radius: 10px;
+  background: rgba(255,255,255,.6);
+}
+.ai-skill-row:has(input:checked) {
+  border-color: rgba(199,95,62,.42); background: rgba(199,95,62,.07);
+}
+.ai-skill-toggle { display: inline-flex; align-items: center; justify-content: center; padding-top: 1px; cursor: pointer; }
+.ai-skill-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.ai-skill-toggle span {
+  width: 30px; height: 18px; border-radius: 999px; position: relative;
+  background: rgba(180,171,154,.55); border: 1px solid rgba(165,154,135,.6);
+  transition: background .15s, border-color .15s;
+}
+.ai-skill-toggle span::after {
+  content: ""; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(29,27,22,.22);
+  transition: transform .15s;
+}
+.ai-skill-toggle input:checked + span { background: var(--accent); border-color: var(--accent); }
+.ai-skill-toggle input:checked + span::after { transform: translateX(12px); }
+.ai-skill-main { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ai-skill-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.ai-skill-title b {
+  min-width: 0; color: var(--ink); font-size: 12.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ai-skill-title span {
+  flex: 0 0 auto; padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--ink-soft); font-size: 9px; font-family: var(--mono); background: rgba(255,255,255,.62);
+}
+.ai-skill-main p { margin: 0; color: var(--ink-soft); font-size: 10.7px; line-height: 1.35; }
+.ai-skill-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.ai-skill-tags span {
+  max-width: 100%; padding: 2px 6px; border-radius: 999px;
+  color: var(--accent-ink); background: rgba(199,95,62,.09); font-size: 9.4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 .ai-messages {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 2px 6px;

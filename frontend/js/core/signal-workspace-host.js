@@ -240,6 +240,23 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
     },
   };
 
+  const skills = {
+    async list(signalAbort) {
+      const response = await fetch("/api/ai/skills", { signal: signalAbort });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "EEG skills are unavailable.");
+      return { skills: Array.isArray(payload.skills) ? payload.skills : [] };
+    },
+    async read(name, signalAbort) {
+      const safeName = String(name || "").trim();
+      if (!safeName) throw new Error("Skill name is required.");
+      const response = await fetch(`/api/ai/skills/${encodeURIComponent(safeName)}`, { signal: signalAbort });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "EEG skill is unavailable.");
+      return payload.skill || {};
+    },
+  };
+
   function displayedToSeriesIndices(series, source, displayedIndices) {
     const result = [];
     for (const displayedIndex of displayedIndices) {
@@ -498,7 +515,7 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
   };
 
   return {
-    signal, workspace, project, artifacts,
+    signal, workspace, project, artifacts, skills,
     getWorkspaceConfiguration(agentConfig = null) {
       const ctx = state();
       const view = ctx.view || {};
@@ -529,7 +546,9 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
           apiKeyReturned: false,
           downloadsDisabledForAgentUnlessExplicitlyRequested: true,
           exportToolHasSideEffects: true,
+          skillsCannotGrantToolPermissions: true,
         },
+        skills: agentConfig?.skills || null,
       };
     },
     async readGuide(signalAbort) {

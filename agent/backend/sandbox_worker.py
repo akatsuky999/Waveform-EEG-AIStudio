@@ -115,9 +115,15 @@ def main():
     labels = list(meta.get("labels") or [])
     groups = list(meta.get("groups") or [])
     n_channels, n_samples = (data.shape if data.ndim == 2 else (1, data.shape[0]))
-    # For a large recording `data` is only the requested window; window_start_sec is
-    # its absolute offset so `t_abs` maps samples back to recording time.
+    # For a large recording `data` is only the requested window; these absolute
+    # bounds let model-written code map local samples back to recording time.
     window_start_sec = float(meta.get("window_start_sec") or 0.0)
+    raw_window_end_sec = meta.get("window_end_sec")
+    try:
+        window_end_sec = float(raw_window_end_sec)
+    except (TypeError, ValueError):
+        window_end_sec = window_start_sec + (n_samples / fs if fs else float(n_samples))
+    window_duration_sec = max(0.0, window_end_sec - window_start_sec)
 
     def find_channel(ref):
         if isinstance(ref, (int, np.integer)) and 0 <= int(ref) < n_channels:
@@ -148,6 +154,16 @@ def main():
         workspace.setdefault("groups", groups)
         workspace.setdefault("nChannels", n_channels)
         workspace.setdefault("nSamples", n_samples)
+        workspace.setdefault("startSec", window_start_sec)
+        workspace.setdefault("endSec", window_end_sec)
+        workspace.setdefault("durationSec", window_duration_sec)
+        workspace.setdefault("windowStartSec", window_start_sec)
+        workspace.setdefault("windowEndSec", window_end_sec)
+        workspace.setdefault("executionWindow", {
+            "startSec": window_start_sec,
+            "endSec": window_end_sec,
+            "durationSec": window_duration_sec,
+        })
         if "channels" not in workspace and isinstance(workspace.get("visibleChannels"), list):
             workspace["channels"] = workspace["visibleChannels"]
 
@@ -162,7 +178,12 @@ def main():
         "n_channels": n_channels,
         "n_samples": n_samples,
         "t": np.arange(n_samples) / fs if fs else np.arange(n_samples),
+        "startSec": window_start_sec,
+        "endSec": window_end_sec,
+        "durationSec": window_duration_sec,
         "window_start_sec": window_start_sec,
+        "window_end_sec": window_end_sec,
+        "window_duration_sec": window_duration_sec,
         "t_abs": (window_start_sec + np.arange(n_samples) / fs) if fs else np.arange(n_samples),
         "find_channel": find_channel,
         "workspace": workspace,
@@ -182,6 +203,8 @@ def main():
         "sfreq": fs, "sr": fs, "srate": fs, "sample_rate": fs, "sampling_rate": fs, "Fs": fs,
         "ch_names": labels, "channel_labels": labels, "ch_labels": labels,
         "signals": data, "eeg": data,
+        "start_sec": window_start_sec, "end_sec": window_end_sec,
+        "duration_sec": window_duration_sec,
     }.items():
         namespace.setdefault(_alias, _value)
     try:

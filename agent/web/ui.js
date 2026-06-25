@@ -38,6 +38,9 @@ export function initDrawerUI(host, handlers = {}) {
   let aiConfigOpen = false;
   let suppressFabClick = false;
   let saveMsgTimer = null;
+  let availableSkills = [];
+  let enabledSkillNames = new Set();
+  let savedHadSkillSettings = false;
 
   // ---- settings persistence ----
   function loadSettings() {
@@ -55,6 +58,90 @@ export function initDrawerUI(host, handlers = {}) {
       maxAgentImages: boundedInt($("aiMaxAgentImages")?.value, DEFAULT_MAX_AGENT_IMAGES, MIN_AGENT_IMAGES, MAX_AGENT_IMAGES),
       maxImageWindowSec: boundedInt($("aiMaxImageWindowSec")?.value, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC),
     };
+  }
+  function sanitizeSkillName(name) {
+    return String(name || "").trim();
+  }
+  function skillManifestForConfig() {
+    return availableSkills.map((skill) => ({
+      name: skill.name,
+      title: skill.title,
+      description: skill.description,
+      version: skill.version,
+      category: skill.category,
+      triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
+      tags: Array.isArray(skill.tags) ? skill.tags.slice(0, 12) : [],
+      enabled: enabledSkillNames.has(skill.name),
+    }));
+  }
+  function enabledSkillsForConfig() {
+    return availableSkills.filter((skill) => enabledSkillNames.has(skill.name)).map((skill) => skill.name);
+  }
+  function renderSkillList(message = "") {
+    const list = $("aiSkillList");
+    if (!list) return;
+    list.innerHTML = "";
+    if (!availableSkills.length) {
+      const empty = document.createElement("div");
+      empty.className = "ai-skill-empty";
+      empty.textContent = message || "No EEG skills available.";
+      list.appendChild(empty);
+      return;
+    }
+    for (const skill of availableSkills) {
+      const row = document.createElement("div");
+      row.className = "ai-skill-row";
+      row.innerHTML =
+        `<label class="ai-skill-toggle">
+           <input type="checkbox" data-skill-name="" />
+           <span aria-hidden="true"></span>
+         </label>
+         <div class="ai-skill-main">
+           <div class="ai-skill-title">
+             <b></b>
+             <span></span>
+           </div>
+           <p></p>
+           <div class="ai-skill-tags"></div>
+         </div>`;
+      const input = row.querySelector("input");
+      input.dataset.skillName = skill.name;
+      input.checked = enabledSkillNames.has(skill.name);
+      row.querySelector(".ai-skill-title b").textContent = skill.title || skill.name;
+      row.querySelector(".ai-skill-title span").textContent = skill.category || "workflow";
+      row.querySelector("p").textContent = skill.description || "Curated EEG prior context.";
+      const tags = row.querySelector(".ai-skill-tags");
+      const chips = [...(skill.triggers || []), ...(skill.tags || [])].slice(0, 8);
+      for (const chip of chips) {
+        const el = document.createElement("span");
+        el.textContent = chip;
+        tags.appendChild(el);
+      }
+      list.appendChild(row);
+    }
+  }
+  async function loadSkills() {
+    renderSkillList("Loading EEG skills...");
+    try {
+      const response = await fetch("/api/ai/skills");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Could not load EEG skills.");
+      availableSkills = (Array.isArray(payload.skills) ? payload.skills : [])
+        .filter((skill) => sanitizeSkillName(skill?.name))
+        .map((skill) => ({ ...skill, name: sanitizeSkillName(skill.name) }));
+      if (!savedHadSkillSettings) {
+        for (const skill of availableSkills) {
+          if (skill.defaultEnabled && !enabledSkillNames.has(skill.name)) enabledSkillNames.add(skill.name);
+        }
+      }
+      const known = new Set(availableSkills.map((skill) => skill.name));
+      enabledSkillNames = new Set([...enabledSkillNames].filter((name) => known.has(name)));
+      renderSkillList();
+      saveSettings();
+    } catch (error) {
+      availableSkills = [];
+      renderSkillList(error.message || "Could not load EEG skills.");
+    }
   }
   function currentFabPosition() {
     const btn = $("aiBtn");
@@ -80,11 +167,13 @@ export function initDrawerUI(host, handlers = {}) {
       model: selectedModel(false),
       customModel: $("aiCustomModel").value.trim(),
       drawerWidth: parseInt(getComputedStyle(document.documentElement).getPropertyValue("--ai-drawer-w"), 10) || 468,
+      enabledSkills: enabledSkillsForConfig(),
       ...limits,
       ...(fab ? { fabLeft: fab.left, fabTop: fab.top } : {}),
     };
     try { sessionStorage.setItem(AI_STORAGE_KEY, JSON.stringify(settings)); }
     catch { /* session storage can be unavailable in private contexts */ }
+    if (availableSkills.length) savedHadSkillSettings = true;
     if (feedback) showSavedFeedback();
   }
 
@@ -486,6 +575,10 @@ export function initDrawerUI(host, handlers = {}) {
       apiKey: $("aiApiKey").value.trim(),
       model: selectedModel(),
       ...limits,
+      skills: {
+        enabled: enabledSkillsForConfig(),
+        available: skillManifestForConfig(),
+      },
     };
   }
 
@@ -498,6 +591,7 @@ export function initDrawerUI(host, handlers = {}) {
       maxTurns: cfg.maxTurns,
       maxAgentImages: cfg.maxAgentImages,
       maxImageWindowSec: cfg.maxImageWindowSec,
+      skills: cfg.skills,
       storage: "sessionStorage",
     };
   }
@@ -511,6 +605,8 @@ export function initDrawerUI(host, handlers = {}) {
   $("aiMaxTurns").value = boundedInt(saved.maxTurns, DEFAULT_MAX_TURNS, MIN_MAX_TURNS, MAX_MAX_TURNS);
   $("aiMaxAgentImages").value = boundedInt(saved.maxAgentImages, DEFAULT_MAX_AGENT_IMAGES, MIN_AGENT_IMAGES, MAX_AGENT_IMAGES);
   $("aiMaxImageWindowSec").value = boundedInt(saved.maxImageWindowSec, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC);
+  savedHadSkillSettings = Array.isArray(saved.enabledSkills);
+  enabledSkillNames = new Set((Array.isArray(saved.enabledSkills) ? saved.enabledSkills : []).map(sanitizeSkillName).filter(Boolean));
   const savedModel = saved.model || DEFAULT_AI_MODEL;
   setModelSelection(LEGACY_DEFAULT_AI_MODELS.has(savedModel) ? DEFAULT_AI_MODEL : savedModel);
   setDrawerWidth(saved.drawerWidth || 468);
@@ -559,6 +655,16 @@ export function initDrawerUI(host, handlers = {}) {
     });
   });
   $("aiTestModelsBtn").addEventListener("click", loadModels);
+  $("aiSkillList")?.addEventListener("change", (e) => {
+    const input = e.target.closest("input[data-skill-name]");
+    if (!input) return;
+    const name = sanitizeSkillName(input.dataset.skillName);
+    if (!name) return;
+    if (input.checked) enabledSkillNames.add(name);
+    else enabledSkillNames.delete(name);
+    renderSkillList();
+    saveSettings();
+  });
   $("aiSendBtn").addEventListener("click", () => handlers.onSend?.($("aiInput").value));
   $("aiStopBtn").addEventListener("click", () => handlers.onStop?.());
   $("aiNewBtn").addEventListener("click", () => handlers.onNewChat?.());
@@ -608,6 +714,7 @@ export function initDrawerUI(host, handlers = {}) {
   });
   msgsEl().addEventListener("scroll", () => { pinned = nearBottom(); updateJump(); });
   $("aiJump")?.addEventListener("click", () => { pinned = true; scrollDown(true); });
+  loadSkills();
 
   return {
     appendUserMessage, beginAssistant, beginToolCard, appendNote, appendError, resetMessages,
@@ -694,6 +801,8 @@ export function toolIcon(name) {
     get_signal_workspace_state: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
     get_workspace_configuration: '<path d="M4 7h10"/><path d="M4 17h10"/><circle cx="18" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
     read_signal_workspace_guide: '<path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 0-3-3z"/><path d="M7 7h8M7 11h8"/>',
+    list_agent_skills: '<path d="M4 5h7v7H4z"/><path d="M13 5h7v7h-7z"/><path d="M4 14h7v5H4z"/><path d="M13 14h7v5h-7z"/>',
+    read_agent_skill: '<path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 0-3-3z"/><path d="M8 8h7M8 12h5"/><path d="M18 3v5"/>',
     list_signal_sources: '<path d="M3 6h7l2 2h9v10H3z"/>',
     open_signal_source: '<path d="M3 6h7l2 2h9v10H3z"/><path d="m11 11 3 2-3 2z"/>',
     set_view: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',

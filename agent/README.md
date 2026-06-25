@@ -22,7 +22,8 @@ agent/
 │   ├── ui.js             drawer UI: settings, model picker, status, run timeline + tool cards
 │   ├── markdown.js       tiny markdown renderer
 │   └── agent.css         drawer + tool-card timeline styles
-└── knowledge/            distilled EEG review notes cited by the system prompt
+├── knowledge/            distilled EEG review notes cited by the system prompt
+└── skills/               curated EEG prior/workflow packs (`skill-name/SKILL.md`)
 ```
 
 ## How it works (the agent loop)
@@ -46,16 +47,27 @@ the current schema.
 ## Tools
 
 The public surface is `read_signal_workspace_guide`,
-`get_signal_workspace_state`, `list_signal_sources`, `open_signal_source`,
-`inspect_channel`, `rank_channels`, `detect_artifact_candidates`,
-`inspect_time_window`, `run_python`, `control_signal_view`,
-`configure_signal_processing`, `manage_signal_events`,
+`get_signal_workspace_state`, `list_agent_skills`, `read_agent_skill`,
+`list_signal_sources`, `open_signal_source`, `inspect_channel`, `rank_channels`,
+`detect_artifact_candidates`, `inspect_time_window`, `run_python`,
+`control_signal_view`, `configure_signal_processing`, `manage_signal_events`,
 `render_signal_images`, and `export_signal_artifact`.
 
 To add a tool: register its schema and side-effect metadata in
 `tool-definitions.js`, implement it against `SignalWorkspaceHost`, and add an
 explicit policy for any new persistent/external side effect. The full contract
 is `knowledge/signal_workspace.md` and is readable by the running Agent.
+
+## EEG skills
+
+Skills are curated local Markdown prior/context packs for EEG workflows,
+centers, datasets, or reporting conventions. They are not plugins and they do
+not add tool permissions. The Config panel shows available skills and lets the
+user enable the ones that should act as default priors for the session. The
+model receives only a compact skill manifest in context; it reads the full
+`SKILL.md` body through `read_agent_skill` when a skill is enabled, explicitly
+requested, or matched by task triggers. Skill guidance never overrides safety,
+annotation, export, or file-switch authorization policy.
 
 ## The Python sandbox (`run_python`)
 
@@ -65,10 +77,11 @@ window is cached server-side at parse time (`datastore.py`, keyed by the
 recording** the user is viewing without shipping samples back.
 
 Inside the worker the code has `data` (float32 `[n_channels, n_samples]`, the raw
-decoded recording), `fs`, `labels`, `groups`, `t`, `find_channel(ref)`, plus
-`numpy`/`scipy`, plus current metadata in `workspace`. It can `print(...)`, fill
-`result`, append to `event_candidates` (legacy `markers` is an alias; neither is
-applied to the viewer), and draw a matplotlib figure (returned as a PNG).
+decoded recording), `fs`, `labels`, `groups`, local `t`, absolute `startSec`,
+`endSec`, `durationSec`, `t_abs`, `find_channel(ref)`, plus `numpy`/`scipy`, plus
+current metadata in `workspace`. It can `print(...)`, fill `result`, append to
+`event_candidates` (legacy `markers` is an alias; neither is applied to the
+viewer), and draw a matplotlib figure (returned as a PNG).
 
 **Isolation (best-effort, honest).** The code runs in a **separate subprocess**
 with a clean environment (no inherited environment-variable secrets), a

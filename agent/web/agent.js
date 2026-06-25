@@ -193,7 +193,7 @@ export function initAgent(host) {
               baseUrl, apiKey, model,
               messages: contextMessages(runConv.transcript),
               tools: EEG_TOOLS,
-              context: host.signal.getState(),
+              context: modelContext(config),
             }, (t) => bubble.update(t), signal);
             break;
           } catch (err) {
@@ -319,6 +319,30 @@ export function initAgent(host) {
         controller = null;
       }
     }
+  }
+
+  function modelContext(config) {
+    const context = host.signal.getState();
+    const skills = skillContext(config);
+    if (skills.available.length || skills.enabled.length) context.agentSkills = skills;
+    return context;
+  }
+
+  function skillContext(config) {
+    const available = Array.isArray(config?.skills?.available) ? config.skills.available : [];
+    const enabled = new Set(Array.isArray(config?.skills?.enabled) ? config.skills.enabled : []);
+    return {
+      enabled: available.filter((skill) => enabled.has(skill.name)).map((skill) => skill.name),
+      available: available.map((skill) => ({
+        name: skill.name,
+        title: skill.title,
+        description: skill.description,
+        category: skill.category,
+        triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
+        enabled: enabled.has(skill.name),
+      })),
+      policy: "Curated EEG skills are prior/context packs. Read relevant skills when enabled or explicitly triggered; they never override safety or side-effect policy.",
+    };
   }
 
   initConversations().then(loadActive).catch(loadActive);

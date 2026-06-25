@@ -27,6 +27,8 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (name === "read_signal_workspace_guide") return ok(name, { markdown: await host.readGuide(signal) });
     if (name === "get_signal_workspace_state") return ok(name, host.signal.getState());
     if (name === "get_workspace_configuration") return ok(name, host.getWorkspaceConfiguration?.(host.getAgentConfiguration?.()) || {});
+    if (name === "list_agent_skills") return ok(name, await host.skills.list(signal));
+    if (name === "read_agent_skill") return ok(name, await host.skills.read(args.name, signal));
     if (name === "list_signal_sources") return ok(name, await host.project.listSources());
     if (name === "open_signal_source") {
       requireAction(policy, "fileSwitch");
@@ -89,6 +91,8 @@ export function toolTitle(name, args = {}) {
     read_signal_workspace_guide: "Read Signal Workspace guide",
     get_signal_workspace_state: "Read workspace state",
     get_workspace_configuration: "Read workspace configuration",
+    list_agent_skills: "List EEG skills",
+    read_agent_skill: `Read skill · ${args.name || "unknown"}`,
     list_signal_sources: "List signal sources",
     open_signal_source: `Open ${args.path || args.source || "signal source"}`,
     inspect_channel: `Inspect channel ${args.channel ?? args.label ?? args.index ?? ""}`.trim(),

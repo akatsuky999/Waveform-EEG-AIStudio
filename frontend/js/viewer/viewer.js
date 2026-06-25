@@ -86,7 +86,7 @@ export class WaveformViewer {
     this.fileContext = { projectName: "", relativePath: "" };
 
     // geometry / layout
-    this.gutter = 124;  // left margin for channel labels (px)
+    this.gutter = 76;   // adaptive left margin for channel labels (px)
     this.axisH = 22;    // band for time-axis labels (px)
     this.hbarH = 16;    // bottom lane reserved for the horizontal scrollbar (px)
     this.vbarW = 14;    // right lane reserved for the vertical scrollbar (px)
@@ -1248,6 +1248,8 @@ export class WaveformViewer {
   render() {
     if (!this.cssW) this.resize();
     if (!this.header) return;
+    const gutterChanged = this._updateAdaptiveGutter();
+    if (gutterChanged && this.windowed) this._tileRange = null;
     const c = this._computeCam();
     this.camera.left = c.left; this.camera.right = c.right;
     this.camera.top = c.top; this.camera.bottom = c.bottom;
@@ -1259,6 +1261,27 @@ export class WaveformViewer {
     // tile for the new range is fetched in the background and swapped in.
     if (this.windowed) this._maybeScheduleTile();
     if (this.onView) this.onView();
+  }
+
+  _updateAdaptiveGutter() {
+    if (!this.octx || !this.cssW) return false;
+    const ctx = this.octx;
+    ctx.save();
+    ctx.font = '12px "Inter", system-ui, sans-serif';
+    let widest = 0;
+    for (const index of this.visibleChannels) {
+      const label = this.channelMeta[index]?.label || `ch${index}`;
+      widest = Math.max(widest, ctx.measureText(label).width);
+    }
+    ctx.restore();
+    const minGutter = 54;
+    const maxGutter = Math.max(74, Math.min(190, this.cssW * 0.36));
+    const next = Math.round(Math.max(minGutter, Math.min(maxGutter, widest + 31)));
+    if (Math.abs(next - this.gutter) > 1) {
+      this.gutter = next;
+      return true;
+    }
+    return false;
   }
 
   _drawChrome() {

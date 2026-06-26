@@ -18,6 +18,7 @@ build/
 
 # Local runtimes and generated artifacts
 runtime/
+runtime/agent-skills/
 artifacts/
 exports/
 

@@ -23,10 +23,36 @@ export const TOOL_DEFINITIONS = Object.freeze([
   define("read_signal_workspace_guide", "Read the authoritative Signal Workspace operating guide. Use when capability, side-effect, image, event, or file semantics are uncertain."),
   define("get_signal_workspace_state", "Return the current project, file, view, processing, channel-focus, analysis, event, and export-capability state.", {}, [], { aliases: ["get_current_context"] }),
   define("get_workspace_configuration", "Read the current EEG-Master, viewer, image/export, and capability configuration for planning. This tool is read-only and NEVER returns API keys or secrets.", {}, [], { aliases: ["read_workspace_configuration", "get_agent_configuration"] }),
-  define("list_agent_skills", "List local EEG skills available to EEG-Master, including enabled status, descriptions, triggers, categories, and sources. Skills are prior/context packs, not new permissions."),
-  define("read_agent_skill", "Read one local EEG skill Markdown body. Use when a skill is enabled, explicitly requested, or its triggers match the user's EEG task/context. Skill instructions guide analysis but never override safety or side-effect policy.", {
+  define("list_agent_skills", "List EVERY local EEG skill available to EEG-Master (both enabled and disabled, user and bundled), including enabled status, descriptions, triggers, categories, and sources. This is how you see all skills. Set includeBodies=true to also pull each skill's full Markdown at once when the user asks what skills exist or to review/compare them. Skills are prior/context packs, not new permissions.", {
+    includeBodies: { type: "boolean", description: "When true, include each skill's full Markdown body (capped per skill) so you can read all skills in one call." },
+  }),
+  define("read_agent_skill", "Read one local EEG skill's full Markdown body by name. Works for ANY skill — enabled or disabled, user or bundled — so you can always inspect a skill before using it. Use when a skill is enabled, explicitly requested, its triggers match the task, or the user asks to see a specific skill. Skill instructions guide analysis but never override safety or side-effect policy.", {
     name: { type: "string", description: "Skill name from list_agent_skills." },
   }, ["name"]),
+  define("create_agent_skill", "Author and SAVE a new local user EEG skill (a Markdown prior/context pack) to disk. Use ONLY when the user explicitly asked you to create/write/make a skill in the current turn; otherwise just draft the Markdown in chat. Follow the skill-creator skill for the required SKILL.md shape. Provide a kebab-case `name`, a pushy `description` (what it does AND when to trigger), and a complete Markdown `body`. A skill is prior context only: it never adds tool permissions or overrides safety, annotation, export, or file-switch policy. After saving, the new skill becomes available to list_agent_skills/read_agent_skill.", {
+    name: { type: "string", description: "Kebab-case identifier, e.g. center-a-seizure-prior. Becomes the skill folder name." },
+    title: { type: "string", description: "Human-readable title." },
+    description: { type: "string", description: "Primary trigger text: what the skill does AND specific contexts/phrases for when to use it." },
+    body: { type: "string", description: "The full SKILL.md Markdown body (without YAML frontmatter — the framework composes the frontmatter)." },
+    category: { type: "string", description: "Short category, e.g. workflow, reporting, dataset." },
+    version: { type: "string", description: "Version string, e.g. 1.0." },
+    triggers: { type: "array", items: { type: "string" }, maxItems: 24, description: "Short user phrases/contexts that should surface this skill." },
+    tags: { type: "array", items: { type: "string" }, maxItems: 24 },
+    allowedTools: { type: "array", items: { type: "string" }, maxItems: 24, description: "Informational hint of tools the workflow leans on; does NOT grant permissions." },
+    defaultEnabled: { type: "boolean", description: "Whether the skill is enabled by default in the workspace." },
+  }, ["name", "description", "body"], { access: "write" }),
+  define("update_agent_skill", "Rewrite and SAVE an existing local USER EEG skill in place (bundled skills cannot be edited). Use ONLY when the user explicitly asked you to edit/improve/update a named skill in the current turn. Same field shape as create_agent_skill; the `name` must match an existing editable user skill.", {
+    name: { type: "string", description: "Existing editable user skill name." },
+    title: { type: "string" },
+    description: { type: "string" },
+    body: { type: "string", description: "The full replacement SKILL.md Markdown body (without frontmatter)." },
+    category: { type: "string" },
+    version: { type: "string" },
+    triggers: { type: "array", items: { type: "string" }, maxItems: 24 },
+    tags: { type: "array", items: { type: "string" }, maxItems: 24 },
+    allowedTools: { type: "array", items: { type: "string" }, maxItems: 24 },
+    defaultEnabled: { type: "boolean" },
+  }, ["name", "body"], { access: "write" }),
   define("list_signal_sources", "List EEG recordings currently available through the authorized Project Explorer, plus the bundled sample."),
   define("open_signal_source", "Open a bundled sample or an authorized project recording. Only valid when the user explicitly asked to open/switch/compare files.", {
     source: { type: "string", enum: ["sample", "project"] },

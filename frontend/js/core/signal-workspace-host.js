@@ -240,6 +240,28 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
     },
   };
 
+  // Normalize an agent-authored skill into the create/update API shape. The
+  // backend composes the YAML frontmatter, so we forward the Markdown `body`
+  // (its `markdown` alias is also accepted) plus the manifest fields.
+  function skillWritePayload(skill = {}) {
+    const list = (value, limit = 24) => (Array.isArray(value)
+      ? value
+      : String(value || "").split(/[\n,]+/))
+      .map((item) => String(item).trim()).filter(Boolean).slice(0, limit);
+    return {
+      name: String(skill.name || "").trim(),
+      title: String(skill.title || "").trim(),
+      description: String(skill.description || "").trim(),
+      category: String(skill.category || "workflow").trim(),
+      version: String(skill.version || "1.0").trim(),
+      defaultEnabled: Boolean(skill.defaultEnabled),
+      triggers: list(skill.triggers),
+      tags: list(skill.tags),
+      allowedTools: list(skill.allowedTools),
+      markdown: String(skill.body ?? skill.markdown ?? "").trim(),
+    };
+  }
+
   const skills = {
     async list(signalAbort) {
       const response = await fetch("/api/ai/skills", { signal: signalAbort });
@@ -253,6 +275,30 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
       const response = await fetch(`/api/ai/skills/${encodeURIComponent(safeName)}`, { signal: signalAbort });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "EEG skill is unavailable.");
+      return payload.skill || {};
+    },
+    async create(skill, signalAbort) {
+      const response = await fetch("/api/ai/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(skillWritePayload(skill)),
+        signal: signalAbort,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Could not create the EEG skill.");
+      return payload.skill || {};
+    },
+    async update(name, skill, signalAbort) {
+      const safeName = String(name || "").trim();
+      if (!safeName) throw new Error("Skill name is required.");
+      const response = await fetch(`/api/ai/skills/${encodeURIComponent(safeName)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(skillWritePayload({ ...skill, name: safeName })),
+        signal: signalAbort,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Could not update the EEG skill.");
       return payload.skill || {};
     },
   };

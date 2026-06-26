@@ -34,6 +34,18 @@ const exportNegative = [
   /\b(?:do not|don't|dont|without|avoid)\b.{0,16}\b(?:export|download|save|write)\b/i,
 ];
 
+const skillWritePositive = [
+  /(?:创建|新建|写|编写|生成|做|制作|保存|更新|修改|改进|完善|沉淀).{0,12}(?:一个|个|这个|新的)?\s*(?:skill|技能|能力包|prior|上下文包)/i,
+  /(?:把|将).{0,20}(?:做成|变成|沉淀为|保存为|封装成).{0,6}(?:skill|技能)/i,
+  /\b(?:create|write|make|build|generate|author|save|update|edit|improve|revise)\b.{0,40}\bskill\b/i,
+  /\b(?:turn|capture|convert)\b.{0,40}\b(?:into|as)\b.{0,12}\bskill\b/i,
+];
+const skillWriteNegative = [
+  /(?:不要|不用|无需|别|禁止|不需要|先别|暂时不).{0,14}(?:创建|新建|写|生成|保存|更新).{0,8}(?:skill|技能)/i,
+  /(?:只|仅).{0,8}(?:草拟|起草|给出|展示|预览).{0,8}(?:skill|技能)/i,
+  /\b(?:do not|don't|dont|no|without|avoid|just draft|only draft|don't save|do not save)\b.{0,24}\bskill\b/i,
+];
+
 function matchesAny(text, patterns) {
   return patterns.some((pattern) => pattern.test(text));
 }
@@ -48,6 +60,7 @@ export function deriveActionPolicy(userText = "") {
     annotation: authorized(text, annotationPositive, annotationNegative),
     fileSwitch: authorized(text, filePositive, fileNegative),
     export: authorized(text, exportPositive, exportNegative),
+    skillWrite: authorized(text, skillWritePositive, skillWriteNegative),
   });
 }
 
@@ -57,6 +70,7 @@ export function requireAction(policy, capability) {
     annotation: "Event changes are blocked because the user did not explicitly request annotation in this turn.",
     fileSwitch: "Opening another signal source is blocked because the user did not explicitly request a file switch in this turn.",
     export: "Downloading an artifact is blocked because the user did not explicitly request an export in this turn.",
+    skillWrite: "Saving a skill is blocked because the user did not explicitly ask to create or update a skill in this turn. Draft the SKILL.md in your reply instead, or ask the user to confirm.",
   };
   throw new Error(messages[capability] || `Action is not authorized: ${capability}`);
 }

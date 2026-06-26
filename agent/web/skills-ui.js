@@ -150,7 +150,7 @@ export function createSkillsManager({ onChange, onMessage } = {}) {
       desc.textContent = skill.description || "Local EEG prior context.";
       const tags = document.createElement("div");
       tags.className = "ai-skill-tags";
-      for (const chip of [...(skill.triggers || []), ...(skill.tags || [])].slice(0, 8)) {
+      for (const chip of [...(skill.triggers || []), ...(skill.tags || [])].slice(0, 3)) {
         const el = document.createElement("span");
         el.textContent = chip;
         tags.appendChild(el);

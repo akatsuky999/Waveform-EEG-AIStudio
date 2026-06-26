@@ -6,7 +6,13 @@
 
 import { renderMarkdown, escapeHtml } from "./markdown.js";
 import { toolTitle } from "./tools.js";
-import { renderToolBody, toolIcon } from "./ui.js";
+import { renderToolBody, toolIcon, isSkillTool } from "./ui.js";
+
+// Quiet status glyphs mirroring the live drawer (a check for done, an alert for
+// error, a chevron for the expand affordance) — no colored status pills.
+const EXPORT_CHECK = '<svg class="tool-done-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+const EXPORT_ERROR_GLYPH = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5h.01"/></svg>';
+const EXPORT_CHEV = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
 
 // Self-contained download (no cross-mount import; keeps the agent plugin portable).
 function download(text, name, type) {
@@ -73,17 +79,21 @@ function logItemHTML(item) {
   }
   if (item.kind === "tool") {
     const status = toolStatus(item.outcome);
-    return `<details class="tool" data-status="${status}"${status === "error" ? " open" : ""}>` +
+    const skill = isSkillTool(item.name);
+    const state = status === "error" ? `${EXPORT_ERROR_GLYPH}<span>Error</span>` : EXPORT_CHECK;
+    return `<details class="tool" data-status="${status}" data-kind="${skill ? "skill" : "tool"}"${status === "error" ? " open" : ""}>` +
       `<summary><span class="tool-icon">${toolIcon(item.name)}</span>` +
       `<span class="tool-name">${escapeHtml(toolTitle(item.name, item.args || {}))}</span>` +
-      `<span class="tool-state">${status === "error" ? "Error" : "Done"}</span></summary>` +
+      (skill ? `<span class="tool-kind">skill</span>` : "") +
+      `<span class="tool-state">${state}</span>` +
+      `<span class="tool-chev">${EXPORT_CHEV}</span></summary>` +
       `<div class="ai-tool tool-body">${renderToolBody(item.name, item.outcome || {})}</div>` +
       `</details>`;
   }
   return "";
 }
 
-function buildHTML(conv, meta, logos = {}) {
+export function buildHTML(conv, meta, logos = {}) {
   const title = escapeHtml(conv.title || "EEG-Master conversation");
   const items = (conv.log || []).map(logItemHTML).join("\n") ||
     `<div class="note">This conversation has no messages yet.</div>`;
@@ -275,18 +285,29 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font
 .md-table tr:last-child td{border-bottom:0;}
 .md-table tbody tr:nth-child(even) td{background:rgba(0,0,0,.018);}
 
-.tool{border:1px solid var(--line);border-radius:11px;background:var(--paper);overflow:hidden;}
-.tool[data-status="done"]{box-shadow:inset 3px 0 0 #8fb893;}
-.tool[data-status="error"]{box-shadow:inset 3px 0 0 var(--accent);border-color:#edd1c6;}
-.tool>summary{list-style:none;display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;font-weight:550;}
+/* quiet tool rows: muted icons, a check on completion, a faint thread linking
+   consecutive steps, and a clay tint for skill rows — matching the live drawer */
+.tool{position:relative;border-radius:9px;}
+.tool + .tool::before{content:"";position:absolute;left:17px;top:-15px;height:15px;width:1.5px;background:linear-gradient(var(--line),rgba(0,0,0,0));border-radius:2px;}
+.tool[data-kind="skill"] + .tool::before,.tool + .tool[data-kind="skill"]::before{background:linear-gradient(rgba(199,95,62,.4),rgba(0,0,0,0));}
+.tool>summary{list-style:none;display:flex;align-items:center;gap:9px;padding:5px 7px;border-radius:9px;cursor:pointer;color:var(--ink-soft);font-weight:500;}
 .tool>summary::-webkit-details-marker{display:none;}
-.tool-icon{display:inline-flex;color:var(--ink-soft);}
-.tool[data-status="done"] .tool-icon{color:var(--accent-ink);}
-.tool-name{flex:1;min-width:0;font-size:13px;}
-.tool-state{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;border-radius:100px;padding:2px 9px;font-weight:600;}
-.tool[data-status="done"] .tool-state{color:#477051;background:#e7f0e7;}
-.tool[data-status="error"] .tool-state{color:var(--accent-ink);background:#fbe8e1;}
-.tool-body{padding:0 12px 12px 13px;border-top:1px solid var(--line);}
+.tool>summary:hover{background:rgba(0,0,0,.035);color:var(--ink);}
+.tool[open]>summary{color:var(--ink);}
+.tool-icon{flex:0 0 auto;width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);}
+.tool[data-status="error"] .tool-icon{color:var(--accent);}
+.tool[data-kind="skill"] .tool-icon{color:var(--accent);}
+.tool-name{flex:1 1 auto;min-width:0;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:inherit;}
+.tool[data-kind="skill"] .tool-name{color:var(--accent-ink);}
+.tool-kind{flex:0 0 auto;font-family:var(--mono);font-size:8.5px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);opacity:.6;}
+.tool-state{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--muted);}
+.tool[data-status="error"] .tool-state{color:var(--accent-ink);}
+.tool-done-check{color:#6f9d72;}
+.tool[data-kind="skill"] .tool-done-check{color:var(--accent);}
+.tool-chev{flex:0 0 auto;color:var(--muted);opacity:.5;transition:transform .15s ease;}
+.tool[open] .tool-chev{transform:rotate(180deg);}
+.tool-body{position:relative;padding:2px 10px 12px 35px;}
+.tool[open] .tool-body::before{content:"";position:absolute;left:16.5px;top:0;bottom:9px;width:1.5px;background:var(--line);border-radius:2px;}
 .ai-tool-label{margin:11px 0 5px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;}
 .ai-code,.ai-out,.ai-err{margin:0;padding:9px;border-radius:8px;font-family:var(--mono);font-size:11.5px;line-height:1.55;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;}
 .ai-code{background:#24211d;color:#f8f2e7;}
@@ -298,7 +319,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font
 
 @media print{
   body{background:#fff;}
-  .print-btn{display:none;}
+  .print-btn,.tool-chev{display:none;}
   .tool{break-inside:avoid;}
   .tool>summary{cursor:default;}
   details>:not(summary){display:block!important;}

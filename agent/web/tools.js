@@ -8,9 +8,19 @@ const BAND_META = [
   ["delta", "δ", "0.5-4"], ["theta", "θ", "4-8"], ["alpha", "α", "8-13"],
   ["beta", "β", "13-30"], ["gamma", "γ", "30-80"],
 ];
+// Per-skill body cap when reading every skill at once via list_agent_skills.
+const SKILL_BODY_CHARS = 6000;
 
 function round(number) { return Math.round(number * 100) / 100; }
 function ok(name, result, extra = {}) { return { name, ok: true, result, ...extra }; }
+function skillSummary(skill = {}) {
+  return {
+    name: skill.name, title: skill.title, description: skill.description,
+    category: skill.category, version: skill.version, source: skill.source,
+    triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
+    note: "Skill saved to disk. It is now available via list_agent_skills / read_agent_skill. A skill is prior context only and grants no tool permissions.",
+  };
+}
 function windowedWorkflowHint(op = "search") {
   return op === "aggregate"
     ? "Use result.meta.exact to judge precision; for exact morphology, choose a short bounded window and call run_python(startSec,endSec) or render_signal_images."
@@ -30,12 +40,31 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (name === "list_agent_skills") {
       const listed = await host.skills.list(signal);
       const enabled = new Set(host.getAgentConfiguration?.().skills?.enabled || []);
-      return ok(name, {
-        ...listed,
-        skills: (listed.skills || []).map((skill) => ({ ...skill, enabled: enabled.has(skill.name) })),
-      });
+      let skills = (listed.skills || []).map((skill) => ({ ...skill, enabled: enabled.has(skill.name) }));
+      if (args.includeBodies) {
+        skills = await Promise.all(skills.map(async (skill) => {
+          try {
+            const full = await host.skills.read(skill.name, signal);
+            const body = typeof full?.markdown === "string" ? full.markdown : "";
+            return { ...skill, markdown: body.length > SKILL_BODY_CHARS ? `${body.slice(0, SKILL_BODY_CHARS)}…(truncated)` : body };
+          } catch (error) {
+            return { ...skill, markdown: "", readError: error.message || String(error) };
+          }
+        }));
+      }
+      return ok(name, { ...listed, skills, includedBodies: !!args.includeBodies });
     }
     if (name === "read_agent_skill") return ok(name, await host.skills.read(args.name, signal));
+    if (name === "create_agent_skill") {
+      requireAction(policy, "skillWrite");
+      const saved = await host.skills.create(args, signal);
+      return ok(name, { saved: true, operation: "create", skill: skillSummary(saved) });
+    }
+    if (name === "update_agent_skill") {
+      requireAction(policy, "skillWrite");
+      const saved = await host.skills.update(args.name, args, signal);
+      return ok(name, { saved: true, operation: "update", skill: skillSummary(saved) });
+    }
     if (name === "list_signal_sources") return ok(name, await host.project.listSources());
     if (name === "open_signal_source") {
       requireAction(policy, "fileSwitch");
@@ -99,7 +128,9 @@ export function toolTitle(name, args = {}) {
     get_signal_workspace_state: "Read workspace state",
     get_workspace_configuration: "Read workspace configuration",
     list_agent_skills: "List EEG skills",
-    read_agent_skill: `Read skill · ${args.name || "unknown"}`,
+    read_agent_skill: `Using skill · ${args.name || "unknown"}`,
+    create_agent_skill: `Create skill · ${args.name || "new"}`,
+    update_agent_skill: `Update skill · ${args.name || "unknown"}`,
     list_signal_sources: "List signal sources",
     open_signal_source: `Open ${args.path || args.source || "signal source"}`,
     inspect_channel: `Inspect channel ${args.channel ?? args.label ?? args.index ?? ""}`.trim(),

@@ -43,6 +43,91 @@ test("EEG-Master can list and read local EEG skills", async () => {
   assert.deepEqual(calls, [["list"], ["read", "long-ieeg-seizure-localization"]]);
 });
 
+test("list_agent_skills can read every skill body at once with includeBodies", async () => {
+  const reads = [];
+  const host = {
+    getAgentConfiguration: () => ({ skills: { enabled: ["b"] } }),
+    skills: {
+      list: async () => ({ skills: [{ name: "a", title: "A" }, { name: "b", title: "B" }] }),
+      read: async (name) => { reads.push(name); return { name, markdown: `# ${name} body` }; },
+    },
+  };
+
+  const plain = await runToolCall(host, { name: "list_agent_skills", arguments: {} }, null);
+  assert.equal(plain.ok, true);
+  assert.equal(plain.result.includedBodies, false);
+  assert.equal(plain.result.skills[0].markdown, undefined);
+  assert.equal(reads.length, 0);
+
+  const full = await runToolCall(host, { name: "list_agent_skills", arguments: { includeBodies: true } }, null);
+  assert.equal(full.ok, true);
+  assert.equal(full.result.includedBodies, true);
+  assert.deepEqual(full.result.skills.map((s) => s.markdown), ["# a body", "# b body"]);
+  assert.equal(full.result.skills[1].enabled, true);
+  assert.deepEqual(reads, ["a", "b"]);
+});
+
+test("skill-write tools are serialized writes, not concurrency safe", () => {
+  for (const name of ["create_agent_skill", "update_agent_skill"]) {
+    const def = getToolDefinition(name);
+    assert.ok(def, `${name} should be registered`);
+    assert.equal(def.access, "write");
+    assert.equal(def.concurrencySafe, false);
+  }
+});
+
+test("creating a skill is blocked unless the turn authorizes skill writes", async () => {
+  let created = false;
+  const host = { skills: { create: async () => { created = true; return { name: "x" }; } } };
+  const blocked = await runToolCall(host, {
+    name: "create_agent_skill",
+    arguments: { name: "center-a", description: "d", body: "# x" },
+  }, null, {});
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.error, /skill/i);
+  assert.equal(created, false);
+});
+
+test("EEG-Master authors and saves a skill when skill writes are authorized", async () => {
+  const received = [];
+  const host = {
+    skills: {
+      create: async (payload) => {
+        received.push(payload);
+        return { name: payload.name, title: "Center A", source: "user", triggers: ["center-a"] };
+      },
+    },
+  };
+  const saved = await runToolCall(host, {
+    name: "create_agent_skill",
+    arguments: {
+      name: "center-a", title: "Center A",
+      description: "When reviewing center A recordings.",
+      body: "# Center A\n\nUse bounded evidence before reporting.",
+    },
+  }, null, { skillWrite: true });
+
+  assert.equal(saved.ok, true);
+  assert.equal(saved.result.saved, true);
+  assert.equal(saved.result.operation, "create");
+  assert.equal(saved.result.skill.name, "center-a");
+  assert.equal(received[0].body, "# Center A\n\nUse bounded evidence before reporting.");
+});
+
+test("updating a skill routes to host.skills.update under authorization", async () => {
+  const host = {
+    skills: { update: async (name, payload) => ({ name, title: payload.title || name, source: "user" }) },
+  };
+  const updated = await runToolCall(host, {
+    name: "update_agent_skill",
+    arguments: { name: "center-a", title: "Center A v2", body: "# v2" },
+  }, null, { skillWrite: true });
+
+  assert.equal(updated.ok, true);
+  assert.equal(updated.result.operation, "update");
+  assert.equal(updated.result.skill.name, "center-a");
+});
+
 test("skill export serializes Markdown frontmatter for user skills", () => {
   const text = skillToDocument({
     name: "center-a-prior",

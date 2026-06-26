@@ -340,7 +340,7 @@ export function initDrawerUI(host, handlers = {}) {
     clearEmpty();
     const el = document.createElement("div");
     el.className = "ai-msg assistant";
-    el.innerHTML = `<div class="md"><span class="ai-thinking-line"><span class="ai-thinking-text">thinking</span></span></div>`;
+    el.innerHTML = `<div class="md"><span class="ai-thinking-line"><span class="ai-thinking-text">Thinking</span></span></div>`;
     $("aiMessages").appendChild(el);
     scrollDown(true);
     const md = el.querySelector(".md");
@@ -348,7 +348,7 @@ export function initDrawerUI(host, handlers = {}) {
       update(text) {
         md.innerHTML = text
           ? renderMarkdown(text)
-          : `<span class="ai-thinking-line"><span class="ai-thinking-text">thinking</span></span>`;
+          : `<span class="ai-thinking-line"><span class="ai-thinking-text">Thinking</span></span>`;
         scrollDown();
       },
       finalize(text) {
@@ -361,14 +361,17 @@ export function initDrawerUI(host, handlers = {}) {
 
   function buildToolCard(name, args) {
     clearEmpty();
+    const skill = isSkillTool(name);
     const card = document.createElement("div");
     card.className = "ai-tool";
     card.dataset.status = "running";
+    card.dataset.kind = skill ? "skill" : "tool";
     card.innerHTML =
       `<button class="ai-tool-head" type="button">
          <span class="ai-tool-icon">${toolIcon(name)}</span>
          <span class="ai-tool-name"></span>
-         <span class="ai-tool-state"><span class="ai-spinner"></span>Running</span>
+         ${skill ? '<span class="ai-tool-kind">skill</span>' : ""}
+         <span class="ai-tool-state"><span class="ai-spinner"></span>${skillRunningVerb(name)}</span>
          <svg class="ai-tool-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
        </button>
        <div class="ai-tool-body"></div>`;
@@ -379,7 +382,7 @@ export function initDrawerUI(host, handlers = {}) {
     const state = card.querySelector(".ai-tool-state");
     const finish = (status, outcome, autoOpen) => {
       card.dataset.status = status;
-      state.innerHTML = status === "error" ? "Error" : "Done";
+      state.innerHTML = status === "error" ? `${ERROR_GLYPH}<span>Error</span>` : DONE_CHECK;
       body.innerHTML = renderToolBody(name, outcome);
       card.classList.toggle("open", !!autoOpen);
     };
@@ -694,6 +697,24 @@ function imgTag(url, alt) {
   return `<div class="ai-note-line">🖼 ${alt} — not stored in history</div>`;
 }
 
+// Skill-related tool calls get a distinct "using skill" treatment in the
+// timeline (a sparkle badge + clay shimmer), mirroring how Claude surfaces skill
+// use, so a skill invocation reads differently from an ordinary signal tool.
+const SKILL_TOOLS = new Set([
+  "list_agent_skills", "read_agent_skill", "create_agent_skill", "update_agent_skill",
+]);
+export function isSkillTool(name) { return SKILL_TOOLS.has(String(name || "")); }
+// A small check that draws itself in on completion (a quiet, Codex-like finish
+// cue) and a compact error glyph — both replace the old colored status pills.
+const DONE_CHECK = '<svg class="ai-done-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+const ERROR_GLYPH = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5h.01"/></svg>';
+function skillRunningVerb(name) {
+  if (name === "read_agent_skill") return "Reading";
+  if (name === "list_agent_skills") return "Reading";
+  if (name === "create_agent_skill" || name === "update_agent_skill") return "Saving";
+  return "Running";
+}
+
 function svgIcon(paths) {
   return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 }
@@ -713,6 +734,8 @@ export function toolIcon(name) {
     read_signal_workspace_guide: '<path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 0-3-3z"/><path d="M7 7h8M7 11h8"/>',
     list_agent_skills: '<path d="M4 5h7v7H4z"/><path d="M13 5h7v7h-7z"/><path d="M4 14h7v5H4z"/><path d="M13 14h7v5h-7z"/>',
     read_agent_skill: '<path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 0-3-3z"/><path d="M8 8h7M8 12h5"/><path d="M18 3v5"/>',
+    create_agent_skill: '<path d="M12 3l1.9 4.6L19 9l-4 3.3L16.2 18 12 15.3 7.8 18 9 12.3 5 9l5.1-1.4z"/>',
+    update_agent_skill: '<path d="M12 3l1.9 4.6L19 9l-4 3.3L16.2 18 12 15.3 7.8 18 9 12.3 5 9l5.1-1.4z"/>',
     list_signal_sources: '<path d="M3 6h7l2 2h9v10H3z"/>',
     open_signal_source: '<path d="M3 6h7l2 2h9v10H3z"/><path d="m11 11 3 2-3 2z"/>',
     set_view: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',

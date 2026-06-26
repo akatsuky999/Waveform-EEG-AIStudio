@@ -24,3 +24,20 @@ test("ambiguous discovery requests remain read-only", () => {
     annotation: false, fileSwitch: false, export: false,
   });
 });
+
+test("recognizes explicit skill-authoring requests and respects opt-out", () => {
+  assert.equal(deriveActionPolicy("帮我把这个流程做成一个 skill").skillWrite, true);
+  assert.equal(deriveActionPolicy("创建一个发作定位的skill").skillWrite, true);
+  assert.equal(deriveActionPolicy("Create a skill for our center's reporting format").skillWrite, true);
+  assert.equal(deriveActionPolicy("update the seizure-localization skill").skillWrite, true);
+  assert.equal(deriveActionPolicy("先别保存skill，只给我看看草稿").skillWrite, false);
+  assert.equal(deriveActionPolicy("分析这个发作的形态").skillWrite, false);
+});
+
+test("skill-write authorization is independent of other side effects", () => {
+  const policy = deriveActionPolicy("写一个skill");
+  assert.deepEqual(
+    { annotation: policy.annotation, fileSwitch: policy.fileSwitch, export: policy.export },
+    { annotation: false, fileSwitch: false, export: false },
+  );
+});

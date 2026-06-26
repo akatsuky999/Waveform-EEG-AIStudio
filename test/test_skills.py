@@ -113,5 +113,24 @@ class AgentSkillRegistryTests(unittest.TestCase):
             registry.create_skill({"name": "../bad", "markdown": "# bad"})
 
 
+class BundledSkillCreatorTests(unittest.TestCase):
+    """The shipped skill-creator bundled skill loads as a read-only manifest."""
+
+    def test_skill_creator_ships_as_a_bundled_skill(self):
+        names = {skill["name"]: skill for skill in registry.list_skills()}
+        self.assertIn("skill-creator", names)
+        manifest = names["skill-creator"]
+        self.assertEqual(manifest["source"], "bundled")
+        self.assertFalse(manifest["editable"])
+        self.assertFalse(manifest["deletable"])
+        self.assertTrue(manifest["description"].strip())
+
+    def test_skill_creator_body_is_readable(self):
+        skill = registry.get_skill("skill-creator")
+        self.assertEqual(skill["title"], "Skill Creator")
+        self.assertIn("create_agent_skill", skill["markdown"])
+        self.assertIn("description", skill["markdown"].lower())
+
+
 if __name__ == "__main__":
     unittest.main()

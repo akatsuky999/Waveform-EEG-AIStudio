@@ -27,7 +27,14 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (name === "read_signal_workspace_guide") return ok(name, { markdown: await host.readGuide(signal) });
     if (name === "get_signal_workspace_state") return ok(name, host.signal.getState());
     if (name === "get_workspace_configuration") return ok(name, host.getWorkspaceConfiguration?.(host.getAgentConfiguration?.()) || {});
-    if (name === "list_agent_skills") return ok(name, await host.skills.list(signal));
+    if (name === "list_agent_skills") {
+      const listed = await host.skills.list(signal);
+      const enabled = new Set(host.getAgentConfiguration?.().skills?.enabled || []);
+      return ok(name, {
+        ...listed,
+        skills: (listed.skills || []).map((skill) => ({ ...skill, enabled: enabled.has(skill.name) })),
+      });
+    }
     if (name === "read_agent_skill") return ok(name, await host.skills.read(args.name, signal));
     if (name === "list_signal_sources") return ok(name, await host.project.listSources());
     if (name === "open_signal_source") {

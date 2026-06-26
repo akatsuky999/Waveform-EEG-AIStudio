@@ -19,11 +19,15 @@ agent/
 │   ├── intent-policy.js  per-turn annotation/file/export authorization
 │   ├── tools.js          execution against the formal SignalWorkspaceHost
 │   ├── stream.js         SSE streaming + native tool_call accumulation (+ legacy <eeg-tools> fallback)
-│   ├── ui.js             drawer UI: settings, model picker, status, run timeline + tool cards
+│   ├── ui.js             drawer UI: conversation, status, run timeline + tool cards
+│   ├── skills-ui.js      local EEG skill manager UI + editor wiring
+│   ├── skills-client.js  browser API client for local skill CRUD
+│   ├── settings-store.js local/session split for non-sensitive settings and API key
 │   ├── markdown.js       tiny markdown renderer
-│   └── agent.css         drawer + tool-card timeline styles
+│   ├── agent.css         drawer + tool-card timeline styles
+│   └── agent-settings.css sidebar Agent settings + skill editor styles
 ├── knowledge/            distilled EEG review notes cited by the system prompt
-└── skills/               curated EEG prior/workflow packs (`skill-name/SKILL.md`)
+└── skills/               optional bundled EEG skills (`skill-name/SKILL.md`)
 ```
 
 ## How it works (the agent loop)
@@ -60,11 +64,20 @@ is `knowledge/signal_workspace.md` and is readable by the running Agent.
 
 ## EEG skills
 
-Skills are curated local Markdown prior/context packs for EEG workflows,
-centers, datasets, or reporting conventions. They are not plugins and they do
-not add tool permissions. The Config panel shows available skills and lets the
-user enable the ones that should act as default priors for the session. The
-model receives only a compact skill manifest in context; it reads the full
+Skills are local Markdown prior/context packs for EEG workflows, centers,
+datasets, or reporting conventions. They are not plugins and they do not add
+tool permissions. The left sidebar Agent panel lists available skills, lets the
+user enable defaults, and supports create/edit/delete/export for user skills.
+
+Two sources are supported:
+
+- `runtime/agent-skills/<skill-name>/SKILL.md` — user skills, local to the
+  machine and ignored by git.
+- `agent/skills/<skill-name>/SKILL.md` — optional bundled skills that ship with
+  the project. Bundled skills can be read, exported, copied into a user skill,
+  and enabled/disabled, but not edited or deleted in the UI.
+
+The model receives only a compact skill manifest in context; it reads the full
 `SKILL.md` body through `read_agent_skill` when a skill is enabled, explicitly
 requested, or matched by task triggers. Skill guidance never overrides safety,
 annotation, export, or file-switch authorization policy.
@@ -97,7 +110,7 @@ the repository's uv environment installs both.
 ## Provider compatibility
 
 No provider is configured by default. The user must explicitly enter the Base
-URL, API key, and model in the Config panel. The local proxy targets an
+URL, API key, and model in the left sidebar Agent panel. The local proxy targets an
 OpenAI-compatible `/v1/chat/completions` endpoint and requires SSE streaming plus
 native multi-turn function tools (`tools`, `tool_choice`, assistant
 `tool_calls`, and `role: "tool"` messages). Multimodal models must accept data-URL
@@ -119,6 +132,7 @@ manually. Text-only or tool-call-emulating endpoints are not fully compatible.
 
 The application proxy sends summary context and optional generated signal images
 or sandbox figures to the user-configured provider — never raw waveform arrays or
-full CSV by design. The API key is held in `sessionStorage` only. The application
-does not intentionally upload sandbox files, but model-written Python is ordinary
-local code and can use the network unless the operating system blocks it.
+full CSV by design. Non-sensitive Agent settings are held in `localStorage`;
+the API key is held in `sessionStorage` only. The application does not
+intentionally upload sandbox files, but model-written Python is ordinary local
+code and can use the network unless the operating system blocks it.

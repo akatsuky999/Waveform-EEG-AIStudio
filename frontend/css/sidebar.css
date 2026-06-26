@@ -98,8 +98,8 @@
 
 .project-tree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 7px 6px 18px; }
 .project-tree.hidden { display: none; }
-.project-tree::-webkit-scrollbar, .controls-scroll::-webkit-scrollbar, .export-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
-.project-tree::-webkit-scrollbar-thumb, .controls-scroll::-webkit-scrollbar-thumb, .export-scroll::-webkit-scrollbar-thumb {
+.project-tree::-webkit-scrollbar, .controls-scroll::-webkit-scrollbar, .export-scroll::-webkit-scrollbar, .agent-settings-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
+.project-tree::-webkit-scrollbar-thumb, .controls-scroll::-webkit-scrollbar-thumb, .export-scroll::-webkit-scrollbar-thumb, .agent-settings-scroll::-webkit-scrollbar-thumb {
   background: var(--line); border: 3px solid var(--rail); border-radius: 8px;
 }
 .tree-item { min-width: max-content; }
@@ -203,6 +203,13 @@
 .export-note { margin-top: 10px !important; padding: 8px; border-radius: 7px; background: var(--panel); }
 .export-status { min-height: 18px; padding: 12px 0; color: var(--ink-soft); font: 10.5px var(--mono); line-height: 1.45; }
 .export-status.error { color: var(--accent-ink); }
+
+.agent-view { overflow: hidden; }
+.agent-settings-scroll {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 11px;
+  padding: 12px 12px 28px;
+}
 
 .image-preview-dialog {
   width: min(1180px, 94vw); height: min(900px, 92vh); max-width: none; max-height: none;

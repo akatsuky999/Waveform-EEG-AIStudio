@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="css/stage.css" />
   <link rel="stylesheet" href="css/sidebar.css" />
   <link rel="stylesheet" href="/agent/agent.css" />
+  <link rel="stylesheet" href="/agent/agent-settings.css" />
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js" } }
   </script>
@@ -49,6 +50,10 @@
           <button class="activity-button" type="button" data-sidebar-module="export" role="tab" aria-selected="false" aria-controls="sidebarExport" title="Export">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5"/><path d="M5 14v6h14v-6"/></svg>
             <span class="sr-only">Export</span>
+          </button>
+          <button class="activity-button" type="button" data-sidebar-module="agent" role="tab" aria-selected="false" aria-controls="sidebarAgent" title="Agent">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 2.8V6M15 2.8V6M9 18v3.2M15 18v3.2M2.8 9H6M2.8 15H6M18 9h3.2M18 15h3.2"/><path d="M10 12h4M12 10v4"/></svg>
+            <span class="sr-only">Agent</span>
           </button>
         </nav>
 
@@ -336,6 +341,94 @@
               <div class="export-status" id="exportStatus" role="status" aria-live="polite"></div>
             </div>
           </section>
+
+          <section class="sidebar-view agent-view" id="sidebarAgent" data-sidebar-panel="agent" role="tabpanel" aria-label="Agent">
+            <header class="sidebar-view-head">
+              <div><span class="sidebar-eyebrow">Agent</span><strong>EEG-Master</strong></div>
+              <div class="sidebar-head-actions agent-head-actions">
+                <span class="ai-save-state ready" id="aiSaveState" role="status" aria-live="polite">Ready</span>
+                <button type="button" id="aiSaveConfigBtn">Save</button>
+              </div>
+            </header>
+            <div class="agent-settings-scroll">
+              <section class="ai-settings-card provider">
+                <div class="ai-settings-card-head">
+                  <div>
+                    <b>Provider</b>
+                  </div>
+                  <span class="ai-config-pill">Session key</span>
+                </div>
+                <div class="ai-field full">
+                  <label for="aiBaseUrl">Base URL</label>
+                  <input type="url" id="aiBaseUrl" placeholder="https://api.openai.com or your provider" autocomplete="off" />
+                </div>
+                <div class="ai-field full">
+                  <label for="aiApiKey">API Key</label>
+                  <input type="password" id="aiApiKey" placeholder="Stored in this browser session only" autocomplete="off" />
+                </div>
+                <div class="ai-field-row">
+                  <div class="ai-field">
+                    <label for="aiModelSelect">Model</label>
+                    <select id="aiModelSelect"></select>
+                  </div>
+                  <div class="ai-field hidden" id="aiCustomWrap">
+                    <label for="aiCustomModel">Custom model</label>
+                    <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
+                  </div>
+                </div>
+                <div class="ai-actions-row">
+                  <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
+                  <span id="aiConfigMsg"></span>
+                </div>
+              </section>
+
+              <section class="ai-settings-card">
+                <div class="ai-settings-card-head">
+                  <div>
+                    <b>Loop Control</b>
+                  </div>
+                </div>
+                <div class="ai-field compact">
+                  <label for="aiMaxTurns">Max steps</label>
+                  <input type="number" id="aiMaxTurns" min="4" max="64" step="1" inputmode="numeric" />
+                </div>
+              </section>
+
+              <section class="ai-settings-card">
+                <div class="ai-settings-card-head">
+                  <div>
+                    <b>Image Budget</b>
+                  </div>
+                </div>
+                <div class="ai-field-row">
+                  <div class="ai-field compact">
+                    <label for="aiMaxAgentImages">Max images</label>
+                    <input type="number" id="aiMaxAgentImages" min="1" max="5" step="1" inputmode="numeric" />
+                  </div>
+                  <div class="ai-field compact">
+                    <label for="aiMaxImageWindowSec">Window seconds</label>
+                    <input type="number" id="aiMaxImageWindowSec" min="5" max="15" step="1" inputmode="numeric" />
+                  </div>
+                </div>
+              </section>
+
+              <section class="ai-settings-card skills">
+                <div class="ai-settings-card-head">
+                  <div>
+                    <b>EEG Skills</b>
+                  </div>
+                  <button class="ai-mini-action" id="aiNewSkillBtn" type="button" title="New skill">
+                    <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 4v10M4 9h10"/></svg>
+                    <span>New</span>
+                  </button>
+                </div>
+                <input class="ai-skill-search" type="search" id="aiSkillSearch" placeholder="Search skills or triggers" />
+                <div class="ai-skill-list" id="aiSkillList">
+                  <div class="ai-skill-empty">Loading EEG skills...</div>
+                </div>
+              </section>
+            </div>
+          </section>
         </div>
         <div class="sidebar-resizer" id="sidebarResizer" title="Drag to resize sidebar"></div>
       </aside>
@@ -430,96 +523,6 @@
           <div class="ai-history-list" id="aiHistoryList"></div>
         </div>
 
-        <section class="ai-settings collapsed" id="aiSettings">
-          <div class="ai-settings-window-head">
-            <div>
-              <b>Agent Config</b>
-            </div>
-            <button class="ai-icon-btn" id="aiSettingsClose" title="Close Config" aria-label="Close Config">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-          </div>
-
-          <div class="ai-settings-card provider">
-            <div class="ai-settings-card-head">
-              <div>
-                <b>Provider</b>
-              </div>
-              <span class="ai-config-pill">No key persistence</span>
-            </div>
-            <div class="ai-field full">
-              <label for="aiBaseUrl">Base URL</label>
-              <input type="url" id="aiBaseUrl" placeholder="https://api.openai.com or your provider" autocomplete="off" />
-            </div>
-            <div class="ai-field full">
-              <label for="aiApiKey">API Key</label>
-              <input type="password" id="aiApiKey" placeholder="Stored in this browser session only" autocomplete="off" />
-            </div>
-            <div class="ai-field-row">
-              <div class="ai-field">
-                <label for="aiModelSelect">Model</label>
-                <select id="aiModelSelect"></select>
-              </div>
-              <div class="ai-field hidden" id="aiCustomWrap">
-                <label for="aiCustomModel">Custom model</label>
-                <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
-              </div>
-            </div>
-            <div class="ai-actions-row">
-              <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
-              <span id="aiConfigMsg"></span>
-            </div>
-          </div>
-
-          <div class="ai-settings-card">
-            <div class="ai-settings-card-head">
-              <div>
-                <b>Loop Control</b>
-              </div>
-            </div>
-            <div class="ai-field compact">
-              <label for="aiMaxTurns">Max steps</label>
-              <input type="number" id="aiMaxTurns" min="4" max="64" step="1" inputmode="numeric" />
-            </div>
-          </div>
-
-          <div class="ai-settings-card">
-            <div class="ai-settings-card-head">
-              <div>
-                <b>Image Budget</b>
-              </div>
-            </div>
-            <div class="ai-field-row">
-              <div class="ai-field compact">
-                <label for="aiMaxAgentImages">Max images</label>
-                <input type="number" id="aiMaxAgentImages" min="1" max="5" step="1" inputmode="numeric" />
-              </div>
-              <div class="ai-field compact">
-                <label for="aiMaxImageWindowSec">Window seconds</label>
-                <input type="number" id="aiMaxImageWindowSec" min="5" max="15" step="1" inputmode="numeric" />
-              </div>
-            </div>
-          </div>
-
-          <div class="ai-settings-card skills">
-            <div class="ai-settings-card-head">
-              <div>
-                <b>EEG Skills</b>
-                <span>Curated prior context for dataset-specific and workflow-specific EEG analysis.</span>
-              </div>
-              <span class="ai-config-pill">Local</span>
-            </div>
-            <div class="ai-skill-list" id="aiSkillList">
-              <div class="ai-skill-empty">Loading EEG skills...</div>
-            </div>
-          </div>
-
-          <div class="ai-settings-footer">
-            <span id="aiSaveMsg" aria-live="polite"></span>
-            <button class="ai-save-btn" id="aiSaveConfigBtn" type="button">Save Config</button>
-          </div>
-        </section>
-
         <div class="ai-messages" id="aiMessages" role="log" aria-live="polite">
           <div class="ai-empty">
             <div class="ai-empty-icon" aria-hidden="true">
@@ -579,6 +582,49 @@
         <button type="button" id="imagePreviewDownload">Download PNG</button>
       </footer>
     </div>
+  </dialog>
+
+  <dialog class="ai-skill-dialog" id="aiSkillDialog" aria-labelledby="aiSkillDialogTitle">
+    <form class="ai-skill-editor" id="aiSkillForm">
+      <header class="ai-skill-editor-head">
+        <div>
+          <span>EEG Skill</span>
+          <strong id="aiSkillDialogTitle">New skill</strong>
+        </div>
+        <button type="button" id="aiSkillCancelBtn" aria-label="Close skill editor">×</button>
+      </header>
+      <div class="ai-skill-editor-grid">
+        <label class="ai-field">Name
+          <input type="text" id="aiSkillName" placeholder="center-a-seizure-prior" autocomplete="off" />
+        </label>
+        <label class="ai-field">Title
+          <input type="text" id="aiSkillTitle" placeholder="Center A Seizure Prior" autocomplete="off" />
+        </label>
+        <label class="ai-field full">Description
+          <textarea id="aiSkillDescription" rows="2" placeholder="Briefly describe when this EEG skill should guide the agent."></textarea>
+        </label>
+        <label class="ai-field">Category
+          <input type="text" id="aiSkillCategory" placeholder="workflow" autocomplete="off" />
+        </label>
+        <label class="ai-field">Version
+          <input type="text" id="aiSkillVersion" placeholder="1.0" autocomplete="off" />
+        </label>
+        <label class="ai-field full">Triggers
+          <input type="text" id="aiSkillTriggers" placeholder="发作定位, long iEEG, center-a" autocomplete="off" />
+        </label>
+        <label class="ai-field full">Tags
+          <input type="text" id="aiSkillTags" placeholder="iEEG, long-recording, artifact-first" autocomplete="off" />
+        </label>
+        <label class="ai-field full">Skill Markdown
+          <textarea class="ai-skill-markdown" id="aiSkillMarkdown" rows="16" placeholder="# Skill title&#10;&#10;Write EEG-specific context, workflow rules, safety boundaries, and reporting format."></textarea>
+        </label>
+      </div>
+      <footer class="ai-skill-editor-footer">
+        <span id="aiSkillEditorMsg" aria-live="polite"></span>
+        <button type="button" class="wide-btn ghost" id="aiSkillExportDraftBtn">Export draft</button>
+        <button type="submit" class="ai-save-btn" id="aiSkillSaveBtn">Save skill</button>
+      </footer>
+    </form>
   </dialog>
 
   <script type="module" src="js/main.js"></script>

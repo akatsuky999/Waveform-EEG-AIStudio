@@ -4,9 +4,11 @@
 import { renderMarkdown, escapeHtml } from "./markdown.js";
 import { toolTitle } from "./tools.js";
 import {
-  AI_MODEL_GROUPS, AI_MODEL_PRESETS, AI_STORAGE_KEY, CUSTOM_MODEL_VALUE,
+  AI_MODEL_GROUPS, AI_MODEL_PRESETS, CUSTOM_MODEL_VALUE,
   DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL, LEGACY_DEFAULT_AI_MODELS,
 } from "./prompt.js";
+import { loadAgentSettings, saveAgentSettings } from "./settings-store.js";
+import { createSkillsManager } from "./skills-ui.js";
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_MAX_TURNS = 16;
@@ -35,17 +37,13 @@ const EMPTY_STATE_HTML = `
 
 export function initDrawerUI(host, handlers = {}) {
   let aiOpen = false;
-  let aiConfigOpen = false;
   let suppressFabClick = false;
-  let saveMsgTimer = null;
-  let availableSkills = [];
-  let enabledSkillNames = new Set();
-  let savedHadSkillSettings = false;
+  let saveStateTimer = null;
+  const skills = createSkillsManager({ onChange: () => saveSettings(), onMessage: (message) => showSavedFeedback(message) });
 
   // ---- settings persistence ----
   function loadSettings() {
-    try { return JSON.parse(sessionStorage.getItem(AI_STORAGE_KEY) || "{}"); }
-    catch { return {}; }
+    return loadAgentSettings();
   }
   function boundedInt(value, fallback, min, max) {
     const number = parseInt(value, 10);
@@ -59,89 +57,11 @@ export function initDrawerUI(host, handlers = {}) {
       maxImageWindowSec: boundedInt($("aiMaxImageWindowSec")?.value, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC),
     };
   }
-  function sanitizeSkillName(name) {
-    return String(name || "").trim();
-  }
   function skillManifestForConfig() {
-    return availableSkills.map((skill) => ({
-      name: skill.name,
-      title: skill.title,
-      description: skill.description,
-      version: skill.version,
-      category: skill.category,
-      triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
-      tags: Array.isArray(skill.tags) ? skill.tags.slice(0, 12) : [],
-      enabled: enabledSkillNames.has(skill.name),
-    }));
+    return skills.getManifest();
   }
   function enabledSkillsForConfig() {
-    return availableSkills.filter((skill) => enabledSkillNames.has(skill.name)).map((skill) => skill.name);
-  }
-  function renderSkillList(message = "") {
-    const list = $("aiSkillList");
-    if (!list) return;
-    list.innerHTML = "";
-    if (!availableSkills.length) {
-      const empty = document.createElement("div");
-      empty.className = "ai-skill-empty";
-      empty.textContent = message || "No EEG skills available.";
-      list.appendChild(empty);
-      return;
-    }
-    for (const skill of availableSkills) {
-      const row = document.createElement("div");
-      row.className = "ai-skill-row";
-      row.innerHTML =
-        `<label class="ai-skill-toggle">
-           <input type="checkbox" data-skill-name="" />
-           <span aria-hidden="true"></span>
-         </label>
-         <div class="ai-skill-main">
-           <div class="ai-skill-title">
-             <b></b>
-             <span></span>
-           </div>
-           <p></p>
-           <div class="ai-skill-tags"></div>
-         </div>`;
-      const input = row.querySelector("input");
-      input.dataset.skillName = skill.name;
-      input.checked = enabledSkillNames.has(skill.name);
-      row.querySelector(".ai-skill-title b").textContent = skill.title || skill.name;
-      row.querySelector(".ai-skill-title span").textContent = skill.category || "workflow";
-      row.querySelector("p").textContent = skill.description || "Curated EEG prior context.";
-      const tags = row.querySelector(".ai-skill-tags");
-      const chips = [...(skill.triggers || []), ...(skill.tags || [])].slice(0, 8);
-      for (const chip of chips) {
-        const el = document.createElement("span");
-        el.textContent = chip;
-        tags.appendChild(el);
-      }
-      list.appendChild(row);
-    }
-  }
-  async function loadSkills() {
-    renderSkillList("Loading EEG skills...");
-    try {
-      const response = await fetch("/api/ai/skills");
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "Could not load EEG skills.");
-      availableSkills = (Array.isArray(payload.skills) ? payload.skills : [])
-        .filter((skill) => sanitizeSkillName(skill?.name))
-        .map((skill) => ({ ...skill, name: sanitizeSkillName(skill.name) }));
-      if (!savedHadSkillSettings) {
-        for (const skill of availableSkills) {
-          if (skill.defaultEnabled && !enabledSkillNames.has(skill.name)) enabledSkillNames.add(skill.name);
-        }
-      }
-      const known = new Set(availableSkills.map((skill) => skill.name));
-      enabledSkillNames = new Set([...enabledSkillNames].filter((name) => known.has(name)));
-      renderSkillList();
-      saveSettings();
-    } catch (error) {
-      availableSkills = [];
-      renderSkillList(error.message || "Could not load EEG skills.");
-    }
+    return skills.getEnabledNames();
   }
   function currentFabPosition() {
     const btn = $("aiBtn");
@@ -150,15 +70,19 @@ export function initDrawerUI(host, handlers = {}) {
     const top = parseFloat(btn.style.top);
     return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null;
   }
-  function showSavedFeedback() {
-    const msg = $("aiSaveMsg");
-    if (!msg) return;
-    msg.textContent = "Saved";
-    msg.classList.add("show");
-    clearTimeout(saveMsgTimer);
-    saveMsgTimer = setTimeout(() => msg.classList.remove("show"), 1300);
+  function setSaveState(kind = "ready", text = "Ready") {
+    const state = $("aiSaveState");
+    if (!state) return;
+    state.className = `ai-save-state ${kind}`;
+    state.textContent = text;
+  }
+  function showSavedFeedback(message = "Saved") {
+    setSaveState("saved", message);
+    clearTimeout(saveStateTimer);
+    saveStateTimer = setTimeout(() => setSaveState("ready", "Ready"), 1200);
   }
   function saveSettings({ feedback = false } = {}) {
+    if (feedback) setSaveState("busy", "Saving");
     const limits = currentLimits();
     const fab = currentFabPosition();
     const settings = {
@@ -171,10 +95,9 @@ export function initDrawerUI(host, handlers = {}) {
       ...limits,
       ...(fab ? { fabLeft: fab.left, fabTop: fab.top } : {}),
     };
-    try { sessionStorage.setItem(AI_STORAGE_KEY, JSON.stringify(settings)); }
-    catch { /* session storage can be unavailable in private contexts */ }
-    if (availableSkills.length) savedHadSkillSettings = true;
+    saveAgentSettings(settings);
     if (feedback) showSavedFeedback();
+    else setSaveState("ready", "Ready");
   }
 
   // ---- model picker ----
@@ -259,9 +182,10 @@ export function initDrawerUI(host, handlers = {}) {
 
   // ---- drawer chrome ----
   function setConfigOpen(open) {
-    aiConfigOpen = !!open;
-    $("aiSettings").classList.toggle("collapsed", !aiConfigOpen);
-    $("aiConfigToggle").classList.toggle("active", aiConfigOpen);
+    if (!open) return;
+    $("aiConfigToggle")?.classList.add("active");
+    handlers.onOpenConfig?.();
+    setTimeout(() => $("aiConfigToggle")?.classList.remove("active"), 700);
   }
   function setDrawerWidth(width) {
     const w = Math.max(320, Math.min(720, parseInt(width, 10) || 468));
@@ -416,12 +340,17 @@ export function initDrawerUI(host, handlers = {}) {
     clearEmpty();
     const el = document.createElement("div");
     el.className = "ai-msg assistant";
-    el.innerHTML = `<div class="md"></div>`;
+    el.innerHTML = `<div class="md"><span class="ai-thinking-line"><span class="ai-thinking-text">thinking</span></span></div>`;
     $("aiMessages").appendChild(el);
     scrollDown(true);
     const md = el.querySelector(".md");
     return {
-      update(text) { md.innerHTML = renderMarkdown(text || "Thinking…"); scrollDown(); },
+      update(text) {
+        md.innerHTML = text
+          ? renderMarkdown(text)
+          : `<span class="ai-thinking-line"><span class="ai-thinking-text">thinking</span></span>`;
+        scrollDown();
+      },
       finalize(text) {
         if (!text || !text.trim()) { el.remove(); return; }
         md.innerHTML = renderMarkdown(text);
@@ -592,7 +521,7 @@ export function initDrawerUI(host, handlers = {}) {
       maxAgentImages: cfg.maxAgentImages,
       maxImageWindowSec: cfg.maxImageWindowSec,
       skills: cfg.skills,
-      storage: "sessionStorage",
+      storage: "localStorage+sessionStorage",
     };
   }
 
@@ -605,12 +534,10 @@ export function initDrawerUI(host, handlers = {}) {
   $("aiMaxTurns").value = boundedInt(saved.maxTurns, DEFAULT_MAX_TURNS, MIN_MAX_TURNS, MAX_MAX_TURNS);
   $("aiMaxAgentImages").value = boundedInt(saved.maxAgentImages, DEFAULT_MAX_AGENT_IMAGES, MIN_AGENT_IMAGES, MAX_AGENT_IMAGES);
   $("aiMaxImageWindowSec").value = boundedInt(saved.maxImageWindowSec, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC);
-  savedHadSkillSettings = Array.isArray(saved.enabledSkills);
-  enabledSkillNames = new Set((Array.isArray(saved.enabledSkills) ? saved.enabledSkills : []).map(sanitizeSkillName).filter(Boolean));
+  skills.hydrate(saved.enabledSkills, Array.isArray(saved.enabledSkills));
   const savedModel = saved.model || DEFAULT_AI_MODEL;
   setModelSelection(LEGACY_DEFAULT_AI_MODELS.has(savedModel) ? DEFAULT_AI_MODEL : savedModel);
   setDrawerWidth(saved.drawerWidth || 468);
-  setConfigOpen(false);
   syncCustomField();
   const configured = !!(saved.baseUrl && saved.apiKey);
   setStatus(configured ? "ok" : "", configured ? "Ready" : "Not connected");
@@ -628,8 +555,7 @@ export function initDrawerUI(host, handlers = {}) {
     setOpen(!aiOpen);
   });
   $("aiCloseBtn").addEventListener("click", () => setOpen(false));
-  $("aiConfigToggle").addEventListener("click", () => setConfigOpen(!aiConfigOpen));
-  $("aiSettingsClose")?.addEventListener("click", () => setConfigOpen(false));
+  $("aiConfigToggle").addEventListener("click", () => setConfigOpen(true));
   $("aiSaveConfigBtn")?.addEventListener("click", () => saveSettings({ feedback: true }));
   bindResize();
   bindFabDrag();
@@ -655,16 +581,6 @@ export function initDrawerUI(host, handlers = {}) {
     });
   });
   $("aiTestModelsBtn").addEventListener("click", loadModels);
-  $("aiSkillList")?.addEventListener("change", (e) => {
-    const input = e.target.closest("input[data-skill-name]");
-    if (!input) return;
-    const name = sanitizeSkillName(input.dataset.skillName);
-    if (!name) return;
-    if (input.checked) enabledSkillNames.add(name);
-    else enabledSkillNames.delete(name);
-    renderSkillList();
-    saveSettings();
-  });
   $("aiSendBtn").addEventListener("click", () => handlers.onSend?.($("aiInput").value));
   $("aiStopBtn").addEventListener("click", () => handlers.onStop?.());
   $("aiNewBtn").addEventListener("click", () => handlers.onNewChat?.());
@@ -693,15 +609,9 @@ export function initDrawerUI(host, handlers = {}) {
     handlers.onExport?.(item.dataset.format);
   });
   document.addEventListener("click", (e) => { if (!exportBtn.parentElement.contains(e.target)) closeExportMenu(); });
-  document.addEventListener("click", (e) => {
-    if (!aiConfigOpen) return;
-    if ($("aiSettings").contains(e.target) || $("aiConfigToggle").contains(e.target)) return;
-    setConfigOpen(false);
-  });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeExportMenu();
-      if (aiConfigOpen) setConfigOpen(false);
     }
   });
   $("aiInput").addEventListener("keydown", (e) => {
@@ -714,7 +624,7 @@ export function initDrawerUI(host, handlers = {}) {
   });
   msgsEl().addEventListener("scroll", () => { pinned = nearBottom(); updateJump(); });
   $("aiJump")?.addEventListener("click", () => { pinned = true; scrollDown(true); });
-  loadSkills();
+  skills.load();
 
   return {
     appendUserMessage, beginAssistant, beginToolCard, appendNote, appendError, resetMessages,

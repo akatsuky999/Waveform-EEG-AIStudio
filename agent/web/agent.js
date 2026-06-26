@@ -47,6 +47,7 @@ export function initAgent(host) {
     onRenameConversation: (id, title) => { renameConversation(id, title); refreshHistory(); },
     onExport: exportActive,
     onContinue: continueRun,
+    onOpenConfig: () => host.openAgentSettings?.(),
   });
   host.getAgentConfiguration = () => ui.getPublicConfig();
 
@@ -338,10 +339,11 @@ export function initAgent(host) {
         title: skill.title,
         description: skill.description,
         category: skill.category,
+        source: skill.source,
         triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
         enabled: enabled.has(skill.name),
       })),
-      policy: "Curated EEG skills are prior/context packs. Read relevant skills when enabled or explicitly triggered; they never override safety or side-effect policy.",
+      policy: "Local EEG skills are prior/context packs. Read relevant skills when enabled or explicitly triggered; they never override safety or side-effect policy.",
     };
   }
 

@@ -15,7 +15,7 @@ from starlette.staticfiles import StaticFiles
 
 from .proxy import ai_chat, ai_models
 from .sandbox import ai_execute
-from .skills import get_skill, list_skills
+from .skills import SkillError, create_skill, delete_skill, get_skill, list_skills, update_skill
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = AGENT_DIR / "web"
@@ -51,6 +51,39 @@ async def agent_skill(request):
         return JSONResponse({"error": str(exc)}, status_code=400)
 
 
+async def agent_skill_create(request):
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise SkillError("Expected a JSON object.")
+        return JSONResponse({"skill": create_skill(payload)}, status_code=201)
+    except FileExistsError:
+        return JSONResponse({"error": "Skill already exists."}, status_code=409)
+    except (KeyError, SkillError, ValueError) as exc:
+        return JSONResponse({"error": str(exc) or "Invalid skill."}, status_code=400)
+
+
+async def agent_skill_update(request):
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise SkillError("Expected a JSON object.")
+        name = request.path_params.get("name", "")
+        return JSONResponse({"skill": update_skill(name, payload)})
+    except KeyError:
+        return JSONResponse({"error": "Editable user skill not found."}, status_code=404)
+    except (SkillError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+async def agent_skill_delete(request):
+    try:
+        delete_skill(request.path_params.get("name", ""))
+        return JSONResponse({"deleted": True})
+    except KeyError:
+        return JSONResponse({"error": "Editable user skill not found."}, status_code=404)
+
+
 def agent_routes() -> list:
     """Routes contributed by the EEG-Master plugin.
 
@@ -58,8 +91,10 @@ def agent_routes() -> list:
     - POST /api/ai/models   model listing proxy
     - POST /api/ai/execute  Python sandbox over the cached EEG window
     - GET  /api/ai/knowledge/signal-workspace  runtime workspace manual
-    - GET  /api/ai/skills   curated EEG skill manifests
-    - GET  /api/ai/skills/{name}   one curated EEG skill body
+    - GET  /api/ai/skills   local/bundled EEG skill manifests
+    - GET  /api/ai/skills/{name}   one EEG skill body
+    - POST /api/ai/skills   create a local user skill
+    - PUT/DELETE /api/ai/skills/{name}   update/delete a local user skill
     - /agent/*              the agent's web bundle (JS/CSS), imported by the shell
     """
     return [
@@ -68,6 +103,9 @@ def agent_routes() -> list:
         Route("/api/ai/execute", ai_execute, methods=["POST"]),
         Route("/api/ai/knowledge/signal-workspace", signal_workspace_guide, methods=["GET"]),
         Route("/api/ai/skills", agent_skills, methods=["GET"]),
+        Route("/api/ai/skills", agent_skill_create, methods=["POST"]),
         Route("/api/ai/skills/{name}", agent_skill, methods=["GET"]),
+        Route("/api/ai/skills/{name}", agent_skill_update, methods=["PUT"]),
+        Route("/api/ai/skills/{name}", agent_skill_delete, methods=["DELETE"]),
         Mount("/agent", app=NoCacheStatic(directory=str(WEB_DIR)), name="agent-web"),
     ]

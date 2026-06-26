@@ -1,0 +1,230 @@
+/* Agent settings workbench and skill editor. Loaded after agent.css. */
+
+.agent-view .sidebar-view-head {
+  align-items: center;
+}
+.agent-head-actions {
+  align-items: center;
+  gap: 7px;
+}
+.agent-head-actions #aiSaveConfigBtn {
+  min-width: 52px;
+}
+.ai-save-state {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 60px; color: #477051; font: 500 11px var(--sans);
+  white-space: nowrap; transition: color .14s ease;
+}
+.ai-save-state::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: #5f9d68; box-shadow: 0 0 0 3px rgba(95,157,104,.12);
+}
+.ai-save-state.saved::before { animation: aiSavedPing .75s ease-out; }
+.ai-save-state.busy { color: #8a672a; }
+.ai-save-state.busy::before {
+  background: #b9852e; box-shadow: 0 0 0 3px rgba(185,133,46,.13);
+  animation: aiThoughtPulse 1.2s ease-in-out infinite;
+}
+.ai-save-state.warn { color: #8c4d37; }
+.ai-save-state.warn::before {
+  background: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.13);
+}
+
+.agent-settings-scroll {
+  padding: 4px 14px 28px;
+  gap: 0;
+}
+.agent-settings-scroll .ai-settings-card {
+  gap: 10px; padding: 15px 0 17px; border: 0; border-bottom: 1px solid var(--line);
+  border-radius: 0; background: transparent; box-shadow: none;
+}
+.agent-settings-scroll .ai-settings-card.provider {
+  background: transparent;
+}
+.agent-settings-scroll .ai-settings-card-head {
+  align-items: center; padding-bottom: 1px;
+}
+.agent-settings-scroll .ai-settings-card-head b {
+  font: 700 11px var(--sans); letter-spacing: .06em; text-transform: uppercase;
+}
+.agent-settings-scroll .ai-config-pill {
+  padding: 3px 7px; background: rgba(255,255,255,.44);
+  color: var(--ink-soft) !important; border-color: rgba(187,176,157,.7);
+}
+.agent-settings-scroll .ai-field-row {
+  gap: 8px;
+}
+.agent-settings-scroll .ai-field label {
+  font-size: 10px; letter-spacing: .055em;
+}
+.agent-settings-scroll .ai-field input,
+.agent-settings-scroll .ai-field select,
+.agent-settings-scroll .ai-skill-search,
+.ai-skill-editor .ai-field textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 7px;
+  background: rgba(255,255,255,.58); color: var(--ink); outline: none;
+  font: 12px var(--sans);
+}
+.agent-settings-scroll .ai-field input,
+.agent-settings-scroll .ai-field select {
+  min-height: 34px; padding: 7px 8px;
+}
+.agent-settings-scroll .ai-field input:focus,
+.agent-settings-scroll .ai-field select:focus,
+.agent-settings-scroll .ai-skill-search:focus,
+.agent-settings-scroll .ai-field textarea:focus,
+.ai-skill-editor .ai-field textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.10);
+}
+.agent-settings-scroll .ai-actions-row {
+  gap: 8px;
+}
+.agent-settings-scroll .ai-actions-row .wide-btn {
+  padding: 6px 9px; border-radius: 7px; font-size: 10.5px;
+}
+.agent-settings-scroll .ai-actions-row span {
+  font-size: 10.5px;
+}
+.ai-mini-action {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px;
+  background: var(--paper); color: var(--ink); font: 600 10.5px var(--sans);
+  cursor: pointer;
+}
+.ai-mini-action svg {
+  width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.ai-mini-action span {
+  display: inline; margin: 0; color: inherit; font: inherit; line-height: 1;
+}
+.ai-mini-action:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+.ai-skill-search {
+  padding: 7px 8px;
+}
+.ai-skill-list {
+  gap: 6px;
+}
+.agent-settings-scroll .ai-skill-row {
+  grid-template-columns: 32px 1fr; gap: 8px; padding: 8px;
+  border-radius: 8px; background: rgba(255,255,255,.42);
+}
+.agent-settings-scroll .ai-skill-row:has(input:checked),
+.ai-skill-row.enabled {
+  border-color: rgba(199,95,62,.34);
+  background: linear-gradient(180deg, rgba(199,95,62,.055), rgba(255,255,255,.42));
+}
+.ai-skill-row[data-source="bundled"] .ai-skill-title span { color: #315e72; background: #e8f2f5; }
+.agent-settings-scroll .ai-skill-title b {
+  font-size: 12px;
+}
+.agent-settings-scroll .ai-skill-main p {
+  font-size: 10.5px; line-height: 1.38;
+}
+.ai-skill-actions {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 1px;
+}
+.ai-skill-actions button {
+  border: 1px solid var(--line); border-radius: 7px; padding: 3px 7px;
+  background: rgba(255,255,255,.55); color: var(--ink-soft); font: 10px var(--sans); cursor: pointer;
+}
+.ai-skill-actions button:hover { color: var(--accent-ink); border-color: var(--accent); }
+.ai-skill-actions button.danger {
+  color: #fff; background: var(--accent-ink); border-color: var(--accent-ink);
+}
+.ai-skill-actions button.danger:hover {
+  color: #fff; background: #7e3420; border-color: #7e3420;
+}
+
+.ai-skill-dialog {
+  width: min(980px, 94vw); max-width: none; max-height: 92vh; padding: 0;
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: var(--paper); color: var(--ink); box-shadow: 0 22px 70px rgba(29,27,22,.24);
+}
+.ai-skill-dialog::backdrop { background: rgba(29,27,22,.42); backdrop-filter: blur(2px); }
+.ai-skill-editor {
+  max-height: 92vh; display: flex; flex-direction: column; min-height: 0;
+}
+.ai-skill-editor-head {
+  min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 12px 16px 12px 20px; border-bottom: 1px solid var(--line); background: var(--bg);
+}
+.ai-skill-editor-head span {
+  display: block; margin-bottom: 3px; color: var(--ink-soft);
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+}
+.ai-skill-editor-head strong { font-family: var(--serif); font-size: 17px; font-weight: 500; }
+.ai-skill-editor-head button {
+  width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--paper); color: var(--ink-soft); font-size: 22px; cursor: pointer;
+}
+.ai-skill-editor-head button:hover { color: var(--accent-ink); border-color: var(--accent); }
+.ai-skill-editor-grid {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding: 16px 18px 18px;
+}
+.ai-skill-editor-grid .full { grid-column: 1 / -1; }
+.ai-skill-editor-grid .ai-field input,
+.ai-skill-editor-grid .ai-field textarea {
+  margin-top: 5px; padding: 8px 9px;
+}
+.ai-skill-markdown {
+  min-height: 300px; font-family: var(--mono) !important; font-size: 12px !important;
+}
+.ai-skill-editor-footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 11px 16px; border-top: 1px solid var(--line); background: var(--bg);
+}
+.ai-skill-editor-footer span {
+  flex: 1 1 auto; min-width: 0; color: var(--accent-ink); font-size: 11px; line-height: 1.4;
+}
+.ai-skill-editor-footer .wide-btn { width: auto; margin: 0; padding: 8px 12px; }
+
+.ai-thinking-line {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--ink-soft); font: 12px var(--mono);
+}
+.ai-thinking-line::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: #5f9d68; box-shadow: 0 0 0 4px rgba(95,157,104,.12);
+  animation: aiThoughtPulse 1.4s ease-in-out infinite;
+}
+.ai-thinking-text {
+  background: linear-gradient(90deg, #8f887c 0%, #2f5740 42%, #8f887c 84%);
+  background-size: 220% 100%; -webkit-background-clip: text; background-clip: text;
+  color: transparent; animation: aiThoughtShimmer 2s ease-in-out infinite;
+}
+.ai-tool[data-status="running"] .ai-tool-head {
+  background: linear-gradient(90deg, rgba(255,255,255,.32), rgba(95,157,104,.08), rgba(255,255,255,.32));
+  background-size: 220% 100%; animation: aiThoughtShimmer 2.2s ease-in-out infinite;
+}
+.ai-tool[data-status="running"] .ai-tool-name {
+  color: #4e6d55;
+}
+@keyframes aiThoughtPulse {
+  0%, 100% { opacity: .42; transform: scale(.86); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes aiSavedPing {
+  0% { box-shadow: 0 0 0 0 rgba(95,157,104,.28); }
+  100% { box-shadow: 0 0 0 8px rgba(95,157,104,0); }
+}
+@keyframes aiThoughtShimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}
+
+@media (max-width: 700px) {
+  .ai-skill-editor-grid { grid-template-columns: 1fr; padding-inline: 12px; }
+  .ai-skill-dialog { width: 98vw; max-height: 96vh; }
+  .ai-skill-editor { max-height: 96vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-thinking-line::before,
+  .ai-thinking-text,
+  .ai-tool[data-status="running"] .ai-tool-head {
+    animation: none;
+  }
+}

@@ -331,4 +331,5 @@ const host = createSignalWorkspaceHost({
     syncControlsFromViewer: () => ctx.syncControlsFromViewer?.(),
   },
 });
+host.openAgentSettings = () => sidebar.setActive("agent");
 initAgent(host);

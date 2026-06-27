@@ -27,11 +27,10 @@ can show the traces but cannot run an investigation, while a script can read the
 but does not know what the researcher is currently looking at. Waveform keeps those two
 sides together.
 
-The viewer gives you direct control over time, channels, montage, filters, normalization,
-events, and exports. Its optional agent, EEG-Master, can inspect the same recording, run
-Python over the underlying samples, generate its own full-recording and focused signal
-views, and operate the visible workspace while it investigates a question. It can report
-candidate events, but it cannot add or edit them unless you explicitly ask.
+The Viewer gives you direct control over time, channels, montage, filters, normalization,
+events, and exports. EEG-Master can inspect the same recording, adjust the control panel
+as part of its workflow, analyze the underlying samples, and generate full-recording and
+focused-window signal views.
 
 ![Waveform showing a multichannel recording, signal controls, and EEG-Master](./pic/exp.png)
 
@@ -46,18 +45,14 @@ rendered view.
 
 ## Highlights
 
-- **Built for long multichannel recordings.** WebGL rendering, time navigation, channel
-  scrolling, gain control, and adjustable row height keep large EEG/iEEG files usable.
-- **A real signal workspace.** Apply bipolar, CAR, group-CAR, or local montage; configure
-  zero-phase band-pass and notch filters; difference, normalize, search, and sort channels.
-- **An agent grounded in the recording.** EEG-Master can rank channels, screen artifacts,
-  inspect windows, run local Python, and render up to one overview plus four focused views.
-- **Conservative by design.** Annotation, file switching, and downloads require an explicit
-  request in the current turn. Analysis alone never grants permission to change events.
-- **Local viewer, provider of your choice.** The viewer works without AI. If the agent is
-  enabled, you choose the OpenAI-compatible model endpoint and decide what it may inspect.
-- **Useful outputs.** Create point or interval events and export PNG, batch ZIP, CSV/JSON,
-  HDF5, or EDF+ artifacts with processing provenance.
+- **EEG visualization for medical learning.** Explore real EEG/iEEG waveforms with
+  filters, montages, and time windows to build an intuitive understanding of signal patterns.
+- **A focused workflow for research data.** Browse, clean, annotate, manage, and export
+  long recordings in one workspace, keeping EEG data work more organized.
+- **EEG AI Agent.** EEG-Master works from the current Viewer state to search signals,
+  adjust views, run analysis, and produce traceable evidence.
+- **EEG Skills.** Users can configure center-, project-, or dataset-specific priors and
+  workflow prompts for different EEG contexts.
 
 ---
 
@@ -97,39 +92,19 @@ The bundled `win001.h5` is a deidentified example covered by the separate
 
 Open **EEG-Master → Config** and enter an API Base URL, API key, and model. Nothing is
 configured by default. The provider must offer an OpenAI-compatible Chat Completions API
-with SSE streaming and native multi-turn tool calls. A model also needs image input if it
-will inspect generated signal views.
+with SSE streaming and native multi-turn tool calls. Image input is needed when the agent
+inspects rendered signal views.
 
-The normal agent loop sends workspace summaries, bounded tool results, and requested
-rendered images to the provider — not raw waveform arrays. Python analysis runs locally on
-the decoded recording. See [agent/README.md](agent/README.md) for the complete tool loop,
-provider contract, and sandbox model.
+For regular recordings, EEG-Master can work directly with the decoded signal workspace:
+it may rank channels, inspect time ranges, run local Python, adjust the Viewer, and render
+evidence images. For large recordings, it switches to a windowed workflow: search the
+recording index, load only bounded time windows for exact analysis, then render short
+windows for morphology review.
 
-For a concrete example, see the self-contained
-[EEG-Master exported report](agent_example.html), built from a 10-second segment
-of the open CHB-MIT EEG dataset. It demonstrates the kind of tool-using trace the
-agent can produce: workspace configuration, channel ranking, artifact screening,
-Python analysis, rendered evidence, and a final narrative report. If you are
-viewing this on GitHub, use **Download raw file** and open it in a browser to see
-the styled report.
-
----
-
-## Development
-
-Install the locked environment and run both regression suites:
-
-```bash
-uv sync --frozen
-npm test
-uv run --frozen python -m unittest discover -s test -p 'test_*.py' -v
-```
-
-The source is divided into three main areas:
-
-- `frontend/` — WebGL viewer, workspace controls, project explorer, and event UI
-- `backend/` — signal readers, binary transport, rendering, and export routes
-- `agent/` — model proxy, tool loop, workspace contract, knowledge, and Python worker
+The provider receives workspace summaries, bounded tool results, and requested images, not
+raw waveform arrays. Python runs locally. See [agent/README.md](agent/README.md) for the
+tool loop and sandbox model, or open the self-contained
+[EEG-Master exported report](agent_example.html) for a concrete example.
 
 ---
 

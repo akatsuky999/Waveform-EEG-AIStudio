@@ -30,6 +30,38 @@
   content: "✓"; position: absolute; right: 11px; color: var(--accent); font-size: 12px;
 }
 
+/* enhanced native <select> → custom clay dropdown (see ui/custom-select.js).
+   The native element is kept in the DOM (source of truth) but visually hidden. */
+.cs { position: relative; display: block; min-width: 0; }
+.cs-native {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; opacity: 0; pointer-events: none;
+}
+.cs-trigger { width: 100%; }
+.cs-trigger .cs-label {
+  flex: 1 1 auto; min-width: 0; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cs-trigger .chev { flex: 0 0 auto; margin-left: 8px; color: var(--ink-soft); transition: transform .15s; }
+.cs-trigger.open .chev { transform: rotate(180deg); }
+.cs-menu {
+  position: fixed; z-index: 60; display: none; flex-direction: column; gap: 2px;
+  max-height: 320px; overflow-y: auto; padding: 5px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.cs-menu.open { display: flex; }
+.cs-menu::-webkit-scrollbar { width: 9px; }
+.cs-menu::-webkit-scrollbar-thumb { background: var(--line); border-radius: 6px; border: 3px solid var(--paper); }
+.cs-group {
+  padding: 8px 11px 3px; font-family: var(--mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+}
+.cs-group:first-child { padding-top: 4px; }
+.cs-item { width: 100%; padding-right: 26px; }
+.cs-item[disabled] { opacity: .4; cursor: default; }
+.cs-item[disabled]:hover { background: transparent; }
+
 /* segmented (differencing) */
 .segmented { display: flex; gap: 4px; background: var(--panel); padding: 3px; border-radius: var(--radius-sm); }
 .segmented button {

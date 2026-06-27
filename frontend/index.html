@@ -258,7 +258,6 @@
             <div class="export-scroll is-disabled" id="exportPanel">
               <section class="export-group">
                 <h2>Quick Export</h2>
-                <p>Snapshot the current view, or export visible data / annotations.</p>
                 <div class="export-buttons">
                   <button class="export-accent" id="pngViewBtn">Current view PNG</button>
                 </div>
@@ -270,7 +269,6 @@
 
               <section class="export-group">
                 <h2>Image Dimensions</h2>
-                <p>Exact output pixels shared by viewer, training, and batch images.</p>
                 <div class="export-grid">
                   <label>Width (px)<input type="number" id="imageWidth" min="320" max="8192" step="1" value="1600" /></label>
                   <label>Height (px)<input type="number" id="imageHeight" min="240" max="8192" step="1" value="1200" /></label>
@@ -289,7 +287,7 @@
               <section class="export-group">
                 <h2>Viewer Image</h2>
                 <div class="export-grid">
-                  <label>Background<select id="viewerBgMode"><option value="transparent">Transparent</option><option value="theme">Current theme</option><option value="white">White</option><option value="custom">Custom</option></select></label>
+                  <label><select id="viewerBgMode" aria-label="Background"><option value="transparent">Transparent</option><option value="theme">Current theme</option><option value="white">White</option><option value="custom">Custom</option></select></label>
                   <label class="color-field hidden" id="viewerCustomBgWrap">Color<input type="color" id="viewerCustomBg" value="#ffffff" /></label>
                 </div>
                 <label class="check-row"><input type="checkbox" id="viewerLabels" checked /> Channel labels</label>
@@ -302,7 +300,6 @@
 
               <section class="export-group">
                 <h2>Training Image</h2>
-                <p>Clean waveform-only rendering for image recognition. Visual cleanup does not alter the selected signal source.</p>
                 <div class="export-grid">
                   <label>Signal<select id="trainingSource"><option value="processed" selected>Processed</option><option value="raw">Raw</option></select></label>
                   <label>Palette<select id="trainingPalette"><option value="cycle" selected>Cycle colors</option><option value="black">All black</option><option value="mono">Custom mono</option><option value="current">Current colors</option></select></label>
@@ -417,10 +414,15 @@
                   <div>
                     <b>EEG Skills</b>
                   </div>
-                  <button class="ai-mini-action" id="aiNewSkillBtn" type="button" title="New skill">
-                    <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 4v10M4 9h10"/></svg>
-                    <span>New</span>
-                  </button>
+                  <div class="ai-skill-head-actions">
+                    <button class="ai-mini-action icon-only" id="aiRefreshSkillsBtn" type="button" title="Refresh skills">
+                      <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M14 5.5A5.8 5.8 0 0 0 4.8 4L3.5 5.3"/><path d="M3.5 2.2v3.1h3.1"/><path d="M4 12.5A5.8 5.8 0 0 0 13.2 14l1.3-1.3"/><path d="M14.5 15.8v-3.1h-3.1"/></svg>
+                    </button>
+                    <button class="ai-mini-action" id="aiNewSkillBtn" type="button" title="New skill">
+                      <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 4v10M4 9h10"/></svg>
+                      <span>New</span>
+                    </button>
+                  </div>
                 </div>
                 <input class="ai-skill-search" type="search" id="aiSkillSearch" placeholder="Search skills or triggers" />
                 <div class="ai-skill-list" id="aiSkillList">

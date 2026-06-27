@@ -26,6 +26,33 @@ function windowedWorkflowHint(op = "search") {
     ? "Use result.meta.exact to judge precision; for exact morphology, choose a short bounded window and call run_python(startSec,endSec) or render_signal_images."
     : "Pick the strongest candidate window, then call run_python(startSec,endSec) for exact computation and render_signal_images for short-window morphology.";
 }
+function enabledSkillSet(host) {
+  return new Set((host.getAgentConfiguration?.().skills?.enabled || []).map((name) => String(name || "").trim()).filter(Boolean));
+}
+function compactSkillText(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+}
+function userNamedSkill(policy, name) {
+  const text = compactSkillText(policy?.userText);
+  const compactName = compactSkillText(name);
+  return !!compactName && text.includes(compactName);
+}
+function canReadDisabledSkill(policy, name) {
+  return Boolean(policy?.skillWrite || policy?.skillInspect || userNamedSkill(policy, name));
+}
+function redactDisabledSkill(skill) {
+  return {
+    name: skill.name,
+    title: skill.title,
+    category: skill.category,
+    source: skill.source,
+    editable: Boolean(skill.editable),
+    deletable: Boolean(skill.deletable),
+    enabled: false,
+    inactive: true,
+    note: "Disabled in Agent settings; do not use for ordinary analysis.",
+  };
+}
 
 export async function runToolCall(host, call, signal, policy = {}) {
   const requestedName = String(call?.name || call?.tool || "").trim();
@@ -39,10 +66,22 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (name === "get_workspace_configuration") return ok(name, host.getWorkspaceConfiguration?.(host.getAgentConfiguration?.()) || {});
     if (name === "list_agent_skills") {
       const listed = await host.skills.list(signal);
-      const enabled = new Set(host.getAgentConfiguration?.().skills?.enabled || []);
-      let skills = (listed.skills || []).map((skill) => ({ ...skill, enabled: enabled.has(skill.name) }));
+      const enabled = enabledSkillSet(host);
+      const includeDisabledBodies = canReadDisabledSkill(policy);
+      let skills = (listed.skills || []).map((skill) => {
+        const active = enabled.has(skill.name);
+        const manifest = { ...skill, enabled: active };
+        return active || includeDisabledBodies ? manifest : redactDisabledSkill(manifest);
+      });
       if (args.includeBodies) {
         skills = await Promise.all(skills.map(async (skill) => {
+          if (!skill.enabled && !includeDisabledBodies) {
+            return {
+              ...skill,
+              markdown: "",
+              readBlocked: "Skill is disabled. Enable it in Agent settings, or explicitly ask to inspect/use this skill in the current turn.",
+            };
+          }
           try {
             const full = await host.skills.read(skill.name, signal);
             const body = typeof full?.markdown === "string" ? full.markdown : "";
@@ -54,7 +93,13 @@ export async function runToolCall(host, call, signal, policy = {}) {
       }
       return ok(name, { ...listed, skills, includedBodies: !!args.includeBodies });
     }
-    if (name === "read_agent_skill") return ok(name, await host.skills.read(args.name, signal));
+    if (name === "read_agent_skill") {
+      const skillName = String(args.name || "").trim();
+      if (!enabledSkillSet(host).has(skillName) && !canReadDisabledSkill(policy, skillName)) {
+        throw new Error("Skill is disabled. Enable it in Agent settings, or explicitly ask to inspect/use this skill in the current turn.");
+      }
+      return ok(name, await host.skills.read(skillName, signal));
+    }
     if (name === "create_agent_skill") {
       requireAction(policy, "skillWrite");
       const saved = await host.skills.create(args, signal);

@@ -12,6 +12,7 @@ import { initControls } from "./ui/controls.js";
 import { initExports } from "./ui/exports.js";
 import { initSidebar } from "./ui/sidebar.js";
 import { initProjectExplorer } from "./ui/project-explorer.js";
+import { enhanceAll } from "./ui/custom-select.js";
 import { dataFileType, isSupportedDataFile } from "./core/project-tree.js";
 import { createSignalWorkspaceHost } from "./core/signal-workspace-host.js";
 import { initAgent } from "/agent/agent.js";
@@ -333,3 +334,8 @@ const host = createSignalWorkspaceHost({
 });
 host.openAgentSettings = () => sidebar.setActive("agent");
 initAgent(host);
+
+// Replace every native <select> with the app's clay dropdown (workspace controls
+// + the agent model picker). Runs after initAgent so the model <select> exists;
+// the enhancer self-updates when the agent later refreshes its model list.
+enhanceAll(document);

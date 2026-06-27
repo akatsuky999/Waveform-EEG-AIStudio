@@ -31,6 +31,7 @@ html, body {
   font-family: var(--sans);
   font-feature-settings: "cv05" 1, "ss01" 1;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  overflow: hidden;
 }
 #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 

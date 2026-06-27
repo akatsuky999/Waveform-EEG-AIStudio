@@ -4,7 +4,7 @@
 import { renderMarkdown, escapeHtml } from "./markdown.js";
 import { toolTitle } from "./tools.js";
 import {
-  AI_MODEL_GROUPS, AI_MODEL_PRESETS, CUSTOM_MODEL_VALUE,
+  AI_MODEL_GROUPS, CUSTOM_MODEL_VALUE,
   DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL, LEGACY_DEFAULT_AI_MODELS,
 } from "./prompt.js";
 import { loadAgentSettings, saveAgentSettings } from "./settings-store.js";
@@ -101,10 +101,14 @@ export function initDrawerUI(host, handlers = {}) {
   }
 
   // ---- model picker ----
-  function renderModelOptions(models, preferred = null) {
+  // The selector always offers the curated families + Custom, independent of what
+  // the provider's /models endpoint lists. Providers (e.g. bianxie.ai) often omit
+  // exact preset IDs from that listing even though the models work, so filtering
+  // the dropdown against it would wrongly drop whole families (GPT, Qwen). "Test
+  // models" only validates the connection; it never reshuffles these options.
+  function renderModelOptions(preferred = null) {
     const select = $("aiModelSelect");
     const current = preferred || selectedModel(false) || DEFAULT_AI_MODEL;
-    const providerModels = [...new Set((models || []).filter(Boolean))];
     select.innerHTML = "";
     const addGroup = (label, values) => {
       const unique = [...new Set(values.filter(Boolean))];
@@ -119,7 +123,7 @@ export function initDrawerUI(host, handlers = {}) {
       }
       select.appendChild(groupEl);
     };
-    for (const group of filterPresetGroups(providerModels)) addGroup(group.label, group.models);
+    for (const group of AI_MODEL_GROUPS) addGroup(group.label, group.models);
     const custom = document.createElement("option");
     custom.value = CUSTOM_MODEL_VALUE;
     custom.textContent = "Custom...";
@@ -169,14 +173,11 @@ export function initDrawerUI(host, handlers = {}) {
       if (!res.ok) throw new Error(data.error || res.statusText);
       const models = parseModels(data);
       if (!models.length) throw new Error("No model list returned");
-      const eligible = filterPresetGroups(models).flatMap((group) => group.models).length;
-      renderModelOptions(models, selectedModel(false));
-      $("aiConfigMsg").textContent = `${eligible} configured models available`;
+      $("aiConfigMsg").textContent = `Connected · ${models.length} model${models.length === 1 ? "" : "s"} on this provider`;
       setStatus("ok", "Ready");
     } catch (err) {
       $("aiConfigMsg").textContent = err.message || "Model test failed";
       setStatus("err", "Model error");
-      renderModelOptions(AI_MODEL_PRESETS, selectedModel(false));
     }
   }
 
@@ -529,7 +530,7 @@ export function initDrawerUI(host, handlers = {}) {
   }
 
   // ---- initial wiring ----
-  renderModelOptions(AI_MODEL_PRESETS);
+  renderModelOptions();
   const saved = loadSettings();
   $("aiBaseUrl").value = saved.baseUrl || DEFAULT_AI_BASE_URL;
   $("aiApiKey").value = saved.apiKey || "";
@@ -634,21 +635,9 @@ export function initDrawerUI(host, handlers = {}) {
     renderConversation, renderHistory, closeHistory, focusInput,
     appendStepLimitNotice,
     setBusy, setStatus, setOpen, saveSettings, getConfig, getPublicConfig,
+    refreshSkills: (options) => skills.load(options),
     clearInput: () => { $("aiInput").value = ""; },
   };
-}
-
-// Keep the selector compact after loading a provider's much larger model list.
-// An empty input means "no provider filter" and is useful for initial render.
-export function filterPresetGroups(models = []) {
-  const available = new Set((models || []).filter(Boolean));
-  const shouldFilter = available.size > 0;
-  return AI_MODEL_GROUPS
-    .map((group) => ({
-      label: group.label,
-      models: shouldFilter ? group.models.filter((model) => available.has(model)) : group.models.slice(),
-    }))
-    .filter((group) => group.models.length > 0);
 }
 
 // ---- tool-card body rendering (module scope) ----------------------------

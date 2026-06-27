@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { runToolCall } from "../agent/web/tools.js";
 import { getToolDefinition } from "../agent/web/tool-definitions.js";
 import { skillToDocument } from "../agent/web/skills-client.js";
+import { deriveActionPolicy } from "../agent/web/intent-policy.js";
 
 test("skill tools are read-only and concurrency safe", () => {
   assert.equal(getToolDefinition("list_agent_skills").access, "read");
@@ -43,12 +44,15 @@ test("EEG-Master can list and read local EEG skills", async () => {
   assert.deepEqual(calls, [["list"], ["read", "long-ieeg-seizure-localization"]]);
 });
 
-test("list_agent_skills can read every skill body at once with includeBodies", async () => {
+test("list_agent_skills includeBodies only reads enabled skill bodies during ordinary analysis", async () => {
   const reads = [];
   const host = {
     getAgentConfiguration: () => ({ skills: { enabled: ["b"] } }),
     skills: {
-      list: async () => ({ skills: [{ name: "a", title: "A" }, { name: "b", title: "B" }] }),
+      list: async () => ({ skills: [
+        { name: "a", title: "A", description: "Disabled trigger text", triggers: ["disabled-trigger"], tags: ["hidden"] },
+        { name: "b", title: "B", description: "Enabled trigger text", triggers: ["enabled-trigger"] },
+      ] }),
       read: async (name) => { reads.push(name); return { name, markdown: `# ${name} body` }; },
     },
   };
@@ -57,14 +61,67 @@ test("list_agent_skills can read every skill body at once with includeBodies", a
   assert.equal(plain.ok, true);
   assert.equal(plain.result.includedBodies, false);
   assert.equal(plain.result.skills[0].markdown, undefined);
+  assert.equal(plain.result.skills[0].description, undefined);
+  assert.equal(plain.result.skills[0].triggers, undefined);
+  assert.equal(plain.result.skills[0].inactive, true);
+  assert.equal(plain.result.skills[1].description, "Enabled trigger text");
   assert.equal(reads.length, 0);
 
   const full = await runToolCall(host, { name: "list_agent_skills", arguments: { includeBodies: true } }, null);
   assert.equal(full.ok, true);
   assert.equal(full.result.includedBodies, true);
-  assert.deepEqual(full.result.skills.map((s) => s.markdown), ["# a body", "# b body"]);
+  assert.deepEqual(full.result.skills.map((s) => s.markdown), ["", "# b body"]);
+  assert.match(full.result.skills[0].readBlocked, /disabled/i);
   assert.equal(full.result.skills[1].enabled, true);
-  assert.deepEqual(reads, ["a", "b"]);
+  assert.deepEqual(reads, ["b"]);
+});
+
+test("explicit skill inspection can list disabled skill metadata and bodies", async () => {
+  const reads = [];
+  const host = {
+    getAgentConfiguration: () => ({ skills: { enabled: [] } }),
+    skills: {
+      list: async () => ({ skills: [{ name: "a", title: "A", description: "Show this", triggers: ["shown"] }] }),
+      read: async (name) => { reads.push(name); return { name, markdown: `# ${name} body` }; },
+    },
+  };
+
+  const listed = await runToolCall(host, {
+    name: "list_agent_skills",
+    arguments: { includeBodies: true },
+  }, null, { userText: "show skills", skillInspect: true });
+
+  assert.equal(listed.ok, true);
+  assert.equal(listed.result.skills[0].description, "Show this");
+  assert.deepEqual(listed.result.skills[0].triggers, ["shown"]);
+  assert.equal(listed.result.skills[0].markdown, "# a body");
+  assert.deepEqual(reads, ["a"]);
+});
+
+test("disabled skills are blocked unless the user explicitly asks about skills", async () => {
+  const reads = [];
+  const host = {
+    getAgentConfiguration: () => ({ skills: { enabled: [] } }),
+    skills: {
+      read: async (name) => { reads.push(name); return { name, markdown: "# disabled body" }; },
+    },
+  };
+
+  const blocked = await runToolCall(host, {
+    name: "read_agent_skill",
+    arguments: { name: "long-ieeg-seizure-localization" },
+  }, null, { userText: "analyze this seizure window" });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.error, /disabled/i);
+  assert.deepEqual(reads, []);
+
+  const allowed = await runToolCall(host, {
+    name: "read_agent_skill",
+    arguments: { name: "long-ieeg-seizure-localization" },
+  }, null, { userText: "show this skill", skillInspect: true });
+  assert.equal(allowed.ok, true);
+  assert.equal(allowed.result.markdown, "# disabled body");
+  assert.deepEqual(reads, ["long-ieeg-seizure-localization"]);
 });
 
 test("skill-write tools are serialized writes, not concurrency safe", () => {
@@ -112,6 +169,32 @@ test("EEG-Master authors and saves a skill when skill writes are authorized", as
   assert.equal(saved.result.operation, "create");
   assert.equal(saved.result.skill.name, "center-a");
   assert.equal(received[0].body, "# Center A\n\nUse bounded evidence before reporting.");
+});
+
+test("Chinese summarize-as-skill requests authorize create_agent_skill", async () => {
+  const received = [];
+  const host = {
+    skills: {
+      create: async (payload) => {
+        received.push(payload);
+        return { name: payload.name, title: payload.title, source: "user" };
+      },
+    },
+  };
+  const policy = deriveActionPolicy("总结一个skill专门用来判断一个CHB-MIT切片是不是癫痫片段");
+  const saved = await runToolCall(host, {
+    name: "create_agent_skill",
+    arguments: {
+      name: "chb-mit-seizure-clip-classifier",
+      title: "CHB-MIT Seizure Clip Classifier",
+      description: "Use when classifying a CHB-MIT scalp EEG clip as ictal vs non-ictal.",
+      body: "# CHB-MIT Seizure Clip Classifier\n\nUse evidence before reporting.",
+    },
+  }, null, policy);
+
+  assert.equal(saved.ok, true);
+  assert.equal(saved.result.operation, "create");
+  assert.equal(received[0].name, "chb-mit-seizure-clip-classifier");
 });
 
 test("updating a skill routes to host.skills.update under authorization", async () => {

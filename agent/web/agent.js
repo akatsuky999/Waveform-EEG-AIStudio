@@ -251,10 +251,20 @@ export function initAgent(host) {
             const outcomes = safe
               ? await Promise.all(group.map((call) => runToolCall(host, call, signal, actionPolicy)))
               : [await runToolCall(host, group[0], signal, actionPolicy)];
+            const refreshes = [];
             outcomes.forEach((outcome, index) => {
               const call = group[index];
               const card = cards[index];
               if (outcome.ok) card.setDone(outcome); else card.setError(outcome.error, outcome);
+              if (outcome.ok && (call.name === "create_agent_skill" || call.name === "update_agent_skill")) {
+                const savedSkillName = outcome.result?.operation === "create" ? outcome.result?.skill?.name : "";
+                const refreshed = ui.refreshSkills?.({
+                  enable: savedSkillName,
+                  feedback: true,
+                  message: outcome.result?.operation === "create" ? "Skill added" : "Skills refreshed",
+                });
+                if (refreshed) refreshes.push(refreshed);
+              }
               runConv.transcript.push(toolResultMessage(call, outcome));
               runConv.log.push({ kind: "tool", name: call.name, args: call.arguments, outcome });
               if (Array.isArray(outcome.attachments)) {
@@ -263,6 +273,7 @@ export function initAgent(host) {
                 attachments.push({ name: call.name, kind: "image", dataUrl: outcome.imageDataUrl, label: call.name });
               }
             });
+            if (refreshes.length) await Promise.all(refreshes);
             callIndex = groupEnd;
           }
           if (attachments.length) {
@@ -337,13 +348,15 @@ export function initAgent(host) {
       available: available.map((skill) => ({
         name: skill.name,
         title: skill.title,
-        description: skill.description,
         category: skill.category,
         source: skill.source,
-        triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
         enabled: enabled.has(skill.name),
+        ...(enabled.has(skill.name) ? {
+          description: skill.description,
+          triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
+        } : {}),
       })),
-      policy: "Local EEG skills are prior/context packs. Read relevant skills when enabled or explicitly triggered; they never override safety or side-effect policy.",
+      policy: "Local EEG skills are prior/context packs. Enabled skills are active priors. Disabled skills are inactive for ordinary analysis; list or read them only when the user explicitly asks to inspect/use/manage skills.",
     };
   }
 

@@ -211,8 +211,14 @@
 .ai-skill-row:has(input:checked) {
   border-color: rgba(199,95,62,.42); background: rgba(199,95,62,.07);
 }
-.ai-skill-toggle { display: inline-flex; align-items: center; justify-content: center; padding-top: 1px; cursor: pointer; }
-.ai-skill-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.ai-skill-toggle {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  padding-top: 1px; cursor: pointer;
+}
+.ai-skill-toggle input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; pointer-events: none;
+}
 .ai-skill-toggle span {
   width: 30px; height: 18px; border-radius: 999px; position: relative;
   background: rgba(180,171,154,.55); border: 1px solid rgba(165,154,135,.6);

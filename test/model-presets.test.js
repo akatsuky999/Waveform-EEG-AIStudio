@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   AI_MODEL_GROUPS, AI_MODEL_PRESETS, DEFAULT_AI_BASE_URL, QWEN_AGENT_MODELS,
 } from "../agent/web/prompt.js";
-import { filterPresetGroups } from "../agent/web/ui.js";
 
 const EXPECTED_QWEN_AGENT_MODELS = [
   "qwen3.7-max",
@@ -52,10 +51,14 @@ test("model catalog excludes dated IDs and unrelated families", () => {
   });
 });
 
-test("provider refresh cannot reintroduce models outside the compact catalog", () => {
-  const providerModels = ["gpt-5.5", "qwen3.7-max", "gpt-4o", "deepseek-v4-pro", "qwen-image"];
+test("the selector always offers exactly the four curated families", () => {
+  // The dropdown is built from AI_MODEL_GROUPS directly (plus a Custom option),
+  // so testing a provider can never drop a family — the previous bug where GPT
+  // and Qwen vanished after a /models refresh that omitted their exact IDs.
   assert.deepEqual(
-    filterPresetGroups(providerModels).flatMap((group) => group.models),
-    ["gpt-5.5", "qwen3.7-max"],
+    AI_MODEL_GROUPS.map((group) => group.label),
+    ["OpenAI · GPT 5.4+", "Anthropic · Claude 4.6+", "Google · Gemini 3.1 Pro+", "Alibaba · Qwen 3.6+"],
   );
+  // every family is non-empty so it always renders
+  AI_MODEL_GROUPS.forEach((group) => assert.equal(group.models.length > 0, true, group.label));
 });

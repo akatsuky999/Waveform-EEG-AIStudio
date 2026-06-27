@@ -184,7 +184,8 @@ export function createSkillsManager({ onChange, onMessage } = {}) {
     }
   }
 
-  async function load() {
+  async function load(options = {}) {
+    const forceEnable = cleanName(options.enable);
     render("Loading EEG skills...");
     try {
       const payload = await listAgentSkills();
@@ -198,11 +199,14 @@ export function createSkillsManager({ onChange, onMessage } = {}) {
       }
       const known = new Set(availableSkills.map((skill) => skill.name));
       enabledSkillNames = new Set([...enabledSkillNames].filter((name) => known.has(name)));
+      if (forceEnable && known.has(forceEnable)) enabledSkillNames.add(forceEnable);
       render();
       onChange?.();
+      if (options.feedback) onMessage?.(options.message || "Skills refreshed");
     } catch (error) {
       availableSkills = [];
       render(error.message || "Could not load EEG skills.");
+      if (options.feedback) onMessage?.(error.message || "Could not load EEG skills.");
     }
   }
 
@@ -296,6 +300,7 @@ export function createSkillsManager({ onChange, onMessage } = {}) {
       version: "1.0",
       markdown: "# New EEG Skill\n\nUse this skill when...\n",
     }));
+    $("aiRefreshSkillsBtn")?.addEventListener("click", () => load({ feedback: true }));
     $("aiSkillSearch")?.addEventListener("input", () => render());
     $("aiSkillList")?.addEventListener("change", (event) => {
       const input = event.target.closest("input[data-skill-name]");
@@ -304,7 +309,7 @@ export function createSkillsManager({ onChange, onMessage } = {}) {
       if (!name) return;
       if (input.checked) enabledSkillNames.add(name);
       else enabledSkillNames.delete(name);
-      render();
+      input.closest(".ai-skill-row")?.classList.toggle("enabled", input.checked);
       onChange?.();
     });
     $("aiSkillList")?.addEventListener("click", (event) => {

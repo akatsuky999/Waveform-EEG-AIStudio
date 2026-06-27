@@ -35,15 +35,21 @@ const exportNegative = [
 ];
 
 const skillWritePositive = [
-  /(?:创建|新建|写|编写|生成|做|制作|保存|更新|修改|改进|完善|沉淀).{0,12}(?:一个|个|这个|新的)?\s*(?:skill|技能|能力包|prior|上下文包)/i,
-  /(?:把|将).{0,20}(?:做成|变成|沉淀为|保存为|封装成).{0,6}(?:skill|技能)/i,
+  /(?:创建|新建|写|编写|生成|做|制作|保存|更新|修改|改进|完善|沉淀|总结|整理|提炼|归纳|封装).{0,12}(?:一个|个|这个|新的)?\s*(?:skill|技能|能力包|prior|上下文包)/i,
+  /(?:把|将).{0,20}(?:做成|变成|沉淀为|保存为|封装成|总结为|整理成|提炼成|归纳成).{0,6}(?:skill|技能|能力包|prior|上下文包)/i,
   /\b(?:create|write|make|build|generate|author|save|update|edit|improve|revise)\b.{0,40}\bskill\b/i,
-  /\b(?:turn|capture|convert)\b.{0,40}\b(?:into|as)\b.{0,12}\bskill\b/i,
+  /\b(?:turn|capture|convert|summarize|package|distill)\b.{0,40}\b(?:into|as)\b.{0,12}\bskill\b/i,
 ];
 const skillWriteNegative = [
-  /(?:不要|不用|无需|别|禁止|不需要|先别|暂时不).{0,14}(?:创建|新建|写|生成|保存|更新).{0,8}(?:skill|技能)/i,
+  /(?:不要|不用|无需|别|禁止|不需要|先别|暂时不).{0,14}(?:创建|新建|写|生成|保存|更新|落盘|写入).{0,8}(?:skill|技能|能力包|prior|上下文包)/i,
+  /(?:不保存|不落盘|不写入).{0,12}(?:skill|技能|能力包|prior|上下文包)?/i,
   /(?:只|仅).{0,8}(?:草拟|起草|给出|展示|预览).{0,8}(?:skill|技能)/i,
   /\b(?:do not|don't|dont|no|without|avoid|just draft|only draft|don't save|do not save)\b.{0,24}\bskill\b/i,
+];
+const skillInspectPositive = [
+  /(?:查看|展示|列出|读取|检查|比较|解释|管理|启用|关闭|禁用).{0,16}(?:skill|技能|能力包|prior|上下文包)/i,
+  /(?:这个|那个|某个|哪些|所有).{0,8}(?:skill|技能|能力包)/i,
+  /\b(?:list|show|view|read|inspect|compare|explain|manage|enable|disable|use)\b.{0,32}\b(?:skill|skills|prior|context pack)\b/i,
 ];
 
 function matchesAny(text, patterns) {
@@ -61,6 +67,7 @@ export function deriveActionPolicy(userText = "") {
     fileSwitch: authorized(text, filePositive, fileNegative),
     export: authorized(text, exportPositive, exportNegative),
     skillWrite: authorized(text, skillWritePositive, skillWriteNegative),
+    skillInspect: authorized(text, skillInspectPositive, []),
   });
 }
 

@@ -124,6 +124,8 @@ class BundledSkillCreatorTests(unittest.TestCase):
         self.assertFalse(manifest["editable"])
         self.assertFalse(manifest["deletable"])
         self.assertTrue(manifest["description"].strip())
+        self.assertIn("summarize", manifest["description"].lower())
+        self.assertIn("总结一个skill", manifest["triggers"])
 
     def test_skill_creator_body_is_readable(self):
         skill = registry.get_skill("skill-creator")

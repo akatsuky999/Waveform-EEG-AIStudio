@@ -1,7 +1,7 @@
 ---
 name: skill-creator
 title: Skill Creator
-description: Author, save, and improve local EEG-Master skills (Markdown prior/context packs). Use this whenever the user wants to create, write, make, capture, package, or update a skill — for example "turn this workflow into a skill", "make a skill for our center's reporting format", "save this as a reusable skill", or "improve the seizure-localization skill". Covers the required SKILL.md shape, how to write a description that triggers reliably, and how to persist the skill with create_agent_skill / update_agent_skill.
+description: Author, save, and improve local EEG-Master skills (Markdown prior/context packs). Use this whenever the user wants to create, write, make, capture, summarize, distill, package, or update a skill — for example "turn this workflow into a skill", "summarize this as a skill", "make a skill for our center's reporting format", "save this as a reusable skill", or "improve the seizure-localization skill". Covers the required SKILL.md shape, how to write a description that triggers reliably, and how to persist the skill with create_agent_skill / update_agent_skill.
 version: 1.0
 category: meta
 default_enabled: false
@@ -12,7 +12,12 @@ triggers:
   - 创建skill
   - 写一个skill
   - 把这个流程做成skill
+  - 总结一个skill
+  - 总结为skill
+  - 封装成skill
   - turn this into a skill
+  - summarize this as a skill
+  - package this as a skill
   - capture this workflow
   - improve the skill
   - update the skill
@@ -30,9 +35,9 @@ allowed_tools:
 ---
 # Skill Creator
 
-Use this skill when the user wants to capture an EEG/iEEG workflow, a center's
-conventions, a dataset's quirks, or a reporting format as a **reusable EEG-Master
-skill**, or to improve an existing one.
+Use this skill when the user wants to capture, summarize, package, or distill an
+EEG/iEEG workflow, a center's conventions, a dataset's quirks, or a reporting
+format as a **reusable EEG-Master skill**, or to improve an existing one.
 
 A skill here is a single Markdown **prior/context pack** — not a plugin. It guides
 how you analyse and report; it never adds tool permissions and never overrides
@@ -63,7 +68,8 @@ everything you write.
 3. **Confirm scope** with the user if anything is ambiguous (triggers, output
    format, boundaries). A short check beats a wrong skill.
 4. **Save** with `create_agent_skill` (new) or `update_agent_skill` (existing user
-   skill) — only after the user has clearly asked you to create/save it.
+   skill) — only after the user has clearly asked you to create/save it, or to
+   summarize/package the workflow as a skill.
 5. **Verify** by reading it back and confirming it lists.
 
 ## SKILL.md shape
@@ -133,8 +139,9 @@ Suggested skeleton:
 
 Persisting a skill writes a file, so it is a gated side effect — the same class as
 annotating or exporting. Only call the write tools when the user explicitly asked
-you to create/save/update a skill **in the current turn**. If they only want to see
-a draft, put the SKILL.md in your reply and stop.
+you to create/save/update a skill, or to summarize/package something as a skill,
+**in the current turn**. If they only want to see a draft, put the SKILL.md in
+your reply and stop.
 
 - `create_agent_skill({ name, title, description, body, category?, version?,
   triggers?, tags?, allowedTools?, defaultEnabled? })` — new skill.

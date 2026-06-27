@@ -28,9 +28,14 @@ test("ambiguous discovery requests remain read-only", () => {
 test("recognizes explicit skill-authoring requests and respects opt-out", () => {
   assert.equal(deriveActionPolicy("帮我把这个流程做成一个 skill").skillWrite, true);
   assert.equal(deriveActionPolicy("创建一个发作定位的skill").skillWrite, true);
+  assert.equal(deriveActionPolicy("总结一个skill专门用来判断一个CHB-MIT切片是不是癫痫片段").skillWrite, true);
+  assert.equal(deriveActionPolicy("把这个判别流程总结为一个 skill").skillWrite, true);
+  assert.equal(deriveActionPolicy("将中心流程整理成一个能力包").skillWrite, true);
   assert.equal(deriveActionPolicy("Create a skill for our center's reporting format").skillWrite, true);
+  assert.equal(deriveActionPolicy("Summarize this workflow as a skill").skillWrite, true);
   assert.equal(deriveActionPolicy("update the seizure-localization skill").skillWrite, true);
   assert.equal(deriveActionPolicy("先别保存skill，只给我看看草稿").skillWrite, false);
+  assert.equal(deriveActionPolicy("总结一下这个发作片段").skillWrite, false);
   assert.equal(deriveActionPolicy("分析这个发作的形态").skillWrite, false);
 });
 
@@ -40,4 +45,10 @@ test("skill-write authorization is independent of other side effects", () => {
     { annotation: policy.annotation, fileSwitch: policy.fileSwitch, export: policy.export },
     { annotation: false, fileSwitch: false, export: false },
   );
+});
+
+test("skill inspection does not authorize skill writes", () => {
+  const policy = deriveActionPolicy("查看一下现在有哪些 skill");
+  assert.equal(policy.skillInspect, true);
+  assert.equal(policy.skillWrite, false);
 });

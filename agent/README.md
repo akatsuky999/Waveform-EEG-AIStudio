@@ -1,6 +1,6 @@
 # EEG-Master agent plugin
 
-A self-contained, Claude-Code-style AI agent for the Waveform viewer. It is wired
+A self-contained AI agent for the Waveform viewer. It is wired
 into the host app as a plugin, but everything it needs lives here so it can be
 iterated and upgraded independently.
 

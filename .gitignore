@@ -51,7 +51,7 @@ secret*.yml
 *.swp
 *.swo
 
-
+# Local Claude workspace config
 .claude/
 
 # Local agent rules (machine-local git-safety guidance; NOT for the public repo)

@@ -52,7 +52,7 @@ secret*.yml
 *.swo
 
 
-.claude/plans/
+.claude/
 
 # Local agent rules (machine-local git-safety guidance; NOT for the public repo)
 /AGENTS.md

@@ -23,15 +23,13 @@ const MAX_IMAGE_WINDOW_SEC = 15;
 
 const EMPTY_STATE_HTML = `
   <div class="ai-empty">
-    <div class="ai-empty-icon" aria-hidden="true">
-      <img src="/pic/agent_logo/eeg-master-ai-scope-rounded-512.png" alt="" />
-    </div>
+    <span class="ai-empty-eyebrow">Agent</span>
     <b>EEG-Master</b>
     <p>I work like an agent: I dig into the actual recording to answer you — inspecting channels, running Python on the real signal, reading the waveform, and annotating events — rather than guessing from a summary.</p>
     <div class="ai-empty-caps">
-      <span>Inspect &amp; rank channels</span>
-      <span>Run Python on the real signal</span>
-      <span>Detect &amp; mark onset / offset</span>
+      <span><i>01</i>Inspect &amp; rank channels</span>
+      <span><i>02</i>Run Python on the real signal</span>
+      <span><i>03</i>Detect &amp; mark onset / offset</span>
     </div>
   </div>`;
 
@@ -75,6 +73,13 @@ export function initDrawerUI(host, handlers = {}) {
     if (!state) return;
     state.className = `ai-save-state ${kind}`;
     state.textContent = text;
+  }
+  function setConfigMsg(text, kind = "") {
+    const el = $("aiConfigMsg");
+    if (!el) return;
+    el.textContent = text;
+    if (kind) el.dataset.kind = kind;
+    else delete el.dataset.kind;
   }
   function showSavedFeedback(message = "Saved") {
     setSaveState("saved", message);
@@ -158,9 +163,9 @@ export function initDrawerUI(host, handlers = {}) {
   async function loadModels() {
     const baseUrl = $("aiBaseUrl").value.trim() || DEFAULT_AI_BASE_URL;
     const apiKey = $("aiApiKey").value.trim();
-    $("aiConfigMsg").textContent = "";
-    if (!baseUrl) { $("aiConfigMsg").textContent = "Base URL required"; setStatus("err", "URL required"); return; }
-    if (!apiKey) { $("aiConfigMsg").textContent = "API Key required"; setStatus("err", "Key required"); return; }
+    setConfigMsg("");
+    if (!baseUrl) { setConfigMsg("Base URL required", "err"); setStatus("err", "URL required"); return; }
+    if (!apiKey) { setConfigMsg("API Key required", "err"); setStatus("err", "Key required"); return; }
     saveSettings();
     setStatus("busy", "Testing");
     try {
@@ -173,10 +178,10 @@ export function initDrawerUI(host, handlers = {}) {
       if (!res.ok) throw new Error(data.error || res.statusText);
       const models = parseModels(data);
       if (!models.length) throw new Error("No model list returned");
-      $("aiConfigMsg").textContent = `Connected · ${models.length} model${models.length === 1 ? "" : "s"} on this provider`;
+      setConfigMsg(`Connected · ${models.length} model${models.length === 1 ? "" : "s"} on this provider`, "ok");
       setStatus("ok", "Ready");
     } catch (err) {
-      $("aiConfigMsg").textContent = err.message || "Model test failed";
+      setConfigMsg(err.message || "Model test failed", "err");
       setStatus("err", "Model error");
     }
   }

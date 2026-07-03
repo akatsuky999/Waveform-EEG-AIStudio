@@ -12,20 +12,22 @@
 }
 .ai-save-state {
   display: inline-flex; align-items: center; gap: 6px;
-  min-width: 60px; color: #477051; font: 500 11px var(--sans);
-  white-space: nowrap; transition: color .14s ease;
+  min-width: 60px; padding: 3px 8px; border-radius: 999px;
+  color: var(--ok-ink); font: 500 11px var(--sans);
+  white-space: nowrap; transition: color .14s ease, background .14s ease;
 }
 .ai-save-state::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%;
-  background: #5f9d68; box-shadow: 0 0 0 3px rgba(95,157,104,.12);
+  background: var(--ok); box-shadow: 0 0 0 3px rgba(95,157,104,.12);
 }
+.ai-save-state.saved { background: rgba(95,157,104,.10); }
 .ai-save-state.saved::before { animation: aiSavedPing .75s ease-out; }
-.ai-save-state.busy { color: #8a672a; }
+.ai-save-state.busy { color: var(--warn-ink); background: rgba(185,133,46,.09); }
 .ai-save-state.busy::before {
-  background: #b9852e; box-shadow: 0 0 0 3px rgba(185,133,46,.13);
+  background: var(--warn); box-shadow: 0 0 0 3px rgba(185,133,46,.13);
   animation: aiThoughtPulse 1.2s ease-in-out infinite;
 }
-.ai-save-state.warn { color: #8c4d37; }
+.ai-save-state.warn { color: #8c4d37; background: rgba(199,95,62,.07); }
 .ai-save-state.warn::before {
   background: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.13);
 }
@@ -45,7 +47,14 @@
   align-items: center; padding-bottom: 1px;
 }
 .agent-settings-scroll .ai-settings-card-head b {
-  font: 700 11px var(--sans); letter-spacing: .06em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+  font: 600 11px var(--sans); letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+/* same clay dot as the Controls / Export section headers */
+.agent-settings-scroll .ai-settings-card-head b::before {
+  content: ""; width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.13);
 }
 .agent-settings-scroll .ai-config-pill {
   padding: 3px 7px; background: rgba(255,255,255,.44);
@@ -85,6 +94,9 @@
 .agent-settings-scroll .ai-actions-row span {
   font-size: 10.5px;
 }
+/* "Test models" feedback reads as success / failure, not neutral gray */
+#aiConfigMsg[data-kind="ok"] { color: var(--ok-ink); }
+#aiConfigMsg[data-kind="err"] { color: var(--accent-ink); }
 .ai-skill-head-actions {
   display: inline-flex; align-items: center; gap: 6px;
 }
@@ -92,19 +104,19 @@
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
   border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px;
   background: var(--paper); color: var(--ink); font: 600 10.5px var(--sans);
-  cursor: pointer;
+  cursor: pointer; transition: border-color .12s, color .12s, background .12s, transform .04s;
 }
 .ai-mini-action.icon-only {
   width: 28px; height: 28px; justify-content: center; padding: 0;
 }
 .ai-mini-action svg {
-  width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2;
+  width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.4;
   stroke-linecap: round; stroke-linejoin: round;
 }
 .ai-mini-action span {
   display: inline; margin: 0; color: inherit; font: inherit; line-height: 1;
 }
-.ai-mini-action:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+.ai-mini-action:hover { color: var(--accent-ink); border-color: var(--accent); }
 .ai-skill-search {
   padding: 7px 8px;
 }
@@ -131,8 +143,9 @@
   display: flex; flex-wrap: wrap; gap: 5px; margin-top: 1px;
 }
 .ai-skill-actions button {
-  border: 1px solid var(--line); border-radius: 7px; padding: 3px 7px;
-  background: rgba(255,255,255,.55); color: var(--ink-soft); font: 10px var(--sans); cursor: pointer;
+  border: 1px solid var(--line); border-radius: 7px; padding: 3px 8px;
+  background: rgba(255,255,255,.55); color: var(--ink-soft); font: 500 10.5px var(--sans); cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s, transform .04s;
 }
 .ai-skill-actions button:hover { color: var(--accent-ink); border-color: var(--accent); }
 .ai-skill-actions button.danger {

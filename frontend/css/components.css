@@ -1,5 +1,30 @@
 /* Waveform — reusable controls: dropdown, segmented, formula card, buttons. */
 
+/* shared interaction states ------------------------------------------------ */
+/* keyboard focus: one accent ring everywhere (zero specificity, so the few
+   controls with bespoke focus rules — activity bar, tree rows — still win) */
+:where(button):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* physical press feedback for flat control buttons */
+.wide-btn:active, .action-row button:active, .filter-presets button:active,
+.export-buttons button:active, .export-primary:active,
+.sidebar-head-actions button:active, .ai-mini-action:active,
+.ai-skill-actions button:active, .explorer-actions button:active { transform: translateY(1px); }
+
+/* hide OS number spinners — values are typed or arrow-keyed */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
+/* popover + dialog entrances */
+@keyframes menuIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@keyframes dialogIn { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+.dd-menu.open, .cs-menu.open, .ai-export-menu.open { animation: menuIn .13s ease; }
+dialog[open] { animation: dialogIn .18s cubic-bezier(.2,.8,.3,1); }
+@media (prefers-reduced-motion: reduce) {
+  .dd-menu.open, .cs-menu.open, .ai-export-menu.open, dialog[open] { animation: none; }
+}
+
 /* dropdown (normalization selector) */
 .dropdown { position: relative; }
 .dd-trigger {

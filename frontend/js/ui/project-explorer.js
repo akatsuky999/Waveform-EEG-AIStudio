@@ -9,9 +9,9 @@ const VIEW_KEY = "waveform.project.view";
 
 const ICONS = {
   chevron: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg>`,
-  folder: `<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2.5 4.5h5l1.4 1.7h6.6v8.3h-13z"/></svg>`,
-  eeg: `<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 2.5h7l4 4v9H3z"/><path d="M10 2.5v4h4M5 11h1.7l1-2.5 1.6 5 1.1-3 1 1.5H13"/></svg>`,
-  file: `<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 2.5h7l4 4v9H3z"/><path d="M10 2.5v4h4"/></svg>`,
+  folder: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`,
+  eeg: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/><path d="M7 14.5h1.9l1.2-3 1.9 6 1.4-3.6 1.2 1.8H17"/></svg>`,
+  file: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/></svg>`,
 };
 
 function permissionOf(handle) {

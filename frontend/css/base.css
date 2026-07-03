@@ -13,6 +13,10 @@
   --grid:      #ece8dc;   /* gridlines                 */
   --accent:    #c75f3e;   /* clay — primary accent     */
   --accent-ink:#b1502f;
+  --ok:        #5f9d68;   /* success dot / check       */
+  --ok-ink:    #477051;   /* success text              */
+  --warn:      #d6a85a;   /* pending / busy dot        */
+  --warn-ink:  #8a6418;   /* pending / busy text       */
 
   --radius:    14px;
   --radius-sm: 9px;
@@ -47,7 +51,8 @@ html, body {
 }
 .brand .word { font-family: var(--serif); font-size: 21px; font-weight: 500; letter-spacing: -0.015em; }
 
-.file-meta { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.file-meta { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
+.file-meta .chip { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .file-meta.hidden { display: none; }
 .chip {
   font-size: 12px; color: var(--ink-soft); background: var(--rail);
@@ -112,13 +117,30 @@ input[type="range"]::-moz-range-thumb {
 }
 input[type="range"]::-moz-range-progress { background: var(--accent); height: 5px; border-radius: 99px; }
 input[type="range"]::-moz-range-track { background: var(--panel); height: 5px; border-radius: 99px; }
+input[type="range"]:focus-visible { outline: none; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(199,95,62,.18); }
+input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(199,95,62,.18); }
 
 .switch-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   font-size: 13px; font-weight: 500; color: var(--ink);
-  padding: 8px 0;
+  padding: 8px 0; cursor: pointer;
 }
-.switch-row input { accent-color: var(--accent); width: 17px; height: 17px; }
+/* pill toggle — same geometry as the agent skill toggles (30×18, 12px knob) */
+.switch-row input {
+  appearance: none; -webkit-appearance: none; margin: 0; flex: 0 0 auto;
+  width: 30px; height: 18px; border-radius: 999px; position: relative; cursor: pointer;
+  background: rgba(180,171,154,.55); border: 1px solid rgba(165,154,135,.6);
+  transition: background .15s, border-color .15s;
+}
+.switch-row input::after {
+  content: ""; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(29,27,22,.22);
+  transition: transform .15s;
+}
+.switch-row input:checked { background: var(--accent); border-color: var(--accent); }
+.switch-row input:checked::after { transform: translateX(12px); }
+.switch-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .mini-field {
   display: flex; flex-direction: column; gap: 6px;
@@ -224,20 +246,25 @@ input[type="range"]::-moz-range-track { background: var(--panel); height: 5px; b
 }
 .marker-row .event-label:focus { border-color: var(--accent); background: var(--paper); outline: none; }
 .event-times { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 4px; }
-.event-times label { color: var(--ink-soft); font: 8.5px var(--mono); }
+.event-times label { color: var(--ink-soft); font: 9.5px var(--mono); }
 .event-times input {
-  width: 100%; margin-top: 2px; padding: 3px 4px; border: 1px solid var(--line); border-radius: 5px;
-  background: var(--paper); color: var(--ink); font: 9.5px var(--mono);
+  width: 100%; margin-top: 2px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 5px;
+  background: var(--paper); color: var(--ink); font: 10.5px var(--mono);
 }
-.event-type { color: var(--accent-ink); font: 8px var(--mono); text-transform: uppercase; }
+.event-times input:focus { border-color: var(--accent); outline: none; }
+.event-type { color: var(--accent-ink); font: 9px var(--mono); letter-spacing: .05em; text-transform: uppercase; }
 .marker-row b { color: var(--ink); font-family: var(--mono); font-size: 11px; }
 .marker-row button {
-  border: 0; background: transparent; color: var(--accent-ink);
-  cursor: pointer; font-size: 12px; padding: 2px 4px;
+  border: 0; background: transparent; color: var(--accent-ink); border-radius: 5px;
+  cursor: pointer; font-size: 12px; padding: 2px 5px; transition: background .12s;
 }
+.marker-row button:hover { background: rgba(199,95,62,.1); }
 
 /* loading overlay */
-.loading { position: absolute; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center; background: rgba(250,249,244,.7); }
+.loading {
+  position: absolute; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center;
+  background: rgba(250,249,244,.72); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
 .loading.show { display: flex; }
 .spinner { width: 28px; height: 28px; border: 2.5px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

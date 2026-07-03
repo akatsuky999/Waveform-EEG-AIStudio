@@ -13,6 +13,17 @@ from .core.envelope import decode_window, detect_kind, pack_envelope
 from .core.exporters import decode_export_array, export_data, export_images, render_image_set
 from .core.util import group_of
 
+# Cap concurrent (potentially heavy) store queries so a burst of rapid
+# filter/montage changes can't pile up unbounded renders and exhaust memory —
+# light queries (search/aggregate) finish fast, so a small limit is invisible.
+_QUERY_SEMAPHORE = asyncio.Semaphore(4)
+
+
+def _json_error(message: str, status_code: int = 400, **extra) -> JSONResponse:
+    payload = {"error": message}
+    payload.update(extra)
+    return JSONResponse(payload, status_code=status_code)
+
 # The agent's Python sandbox reads the decoded window from this cache. The import
 # is soft so the core still works if the agent plugin is removed.
 try:
@@ -163,11 +174,18 @@ async def signal_query(request: Request) -> Response:
         return _json_error("Expected a JSON request body.", 400)
     if not isinstance(spec, dict):
         return _json_error("Query must be a JSON object.", 400)
-    kind, data = store.query(str(spec.get("token") or ""), spec)
+    # Run the (potentially heavy) query in a worker thread so a large processed
+    # render never blocks the event loop — the server stays responsive under rapid
+    # filter/montage changes instead of freezing; the semaphore bounds how many run
+    # at once so memory stays capped.
+    async with _QUERY_SEMAPHORE:
+        kind, data = await asyncio.to_thread(store.query, str(spec.get("token") or ""), spec)
     if kind == "tile":
         return Response(content=data, media_type="application/octet-stream")
     if isinstance(data, dict) and isinstance(data.get("status"), int):
-        return _json_error(data.get("error", "Query failed."), data["status"])
+        status = int(data["status"])
+        extra = {k: v for k, v in data.items() if k not in ("error", "status")}
+        return _json_error(data.get("error", "Query failed."), status, **extra)
     return JSONResponse(data)
 
 

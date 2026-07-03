@@ -25,6 +25,9 @@ exports/
 # Local one-off data preparation utilities
 /scripts/
 
+# Local validation tests (kept for solo development, not published)
+/test/
+
 # Local planning / progress notes (machine-local, not for the public repo)
 /todoplan.md
 /todoplan/

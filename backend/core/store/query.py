@@ -14,10 +14,12 @@ import struct
 
 import numpy as np
 
+from . import dsp as _dsp
 from . import features as _features
 from . import pyramid as _pyramid
 from .registry import (
-    D, EXACT_AGG_MAX_SAMPLES, FEATURE_NAMES, RAW_LINE_MAX_SAMPLES,
+    D, EXACT_AGG_MAX_SAMPLES, FEATURE_NAMES, MIN_WORK_RATE, RAW_LINE_MAX_SAMPLES,
+    PROCESSED_RENDER_MAX_SPAN_SEC, PROCESSED_RENDER_MAX_WORK_VALUES,
     SAMPLES_MAX_PER_CH, SEARCH_BUDGET_DEFAULT, get_handle,
 )
 
@@ -28,6 +30,8 @@ def query(token: str, spec: dict):
     if handle is None:
         return ("json", {"error": "No windowed dataset for this dataToken.", "status": 409})
     if op == "render":
+        if spec.get("processing"):
+            return _q_render_processed(handle, spec)
         return ("tile", _q_render(handle, spec))
     if op == "samples":
         return ("tile", _q_samples(handle, spec))
@@ -129,6 +133,134 @@ def _q_render(handle, spec) -> bytes:
               "exact": False, "grain": f"lod:{int(tier_factor)}x",
               "resolution": int(round(span / n_cols)), "coverageSec": [s0 / fs, s1 / fs]}
     return _pack_tile(header, out.reshape(-1))
+
+
+# ---- processed render (server-side DSP) ----
+_READ_CHUNK_VALUES = 8_000_000   # peak read budget per chunk (≈32 MB float32)
+
+
+def _read_decimate(raw, ca, s0: int, s1: int, down: int) -> np.ndarray:
+    """Read raw[ca, s0:s1] and boxcar-decimate by `down` in CHUNKS, so the peak
+    resident array is bounded by one chunk (not the whole window). Decouples memory
+    from window length / sampling rate — the OOM fix for wide processed renders."""
+    nch = len(ca)
+    if down <= 1:
+        return np.ascontiguousarray(raw[ca, s0:s1], dtype=np.float32)
+    chunk = max(down, ((_READ_CHUNK_VALUES // max(1, nch)) // down) * down)
+    parts = []
+    a = s0
+    while a < s1:
+        m = min(chunk, ((s1 - a) // down) * down)
+        if m <= 0:
+            break
+        blk = np.asarray(raw[ca, a:a + m], dtype=np.float32)
+        parts.append(blk.reshape(nch, m // down, down).mean(axis=2))
+        a += m
+    if not parts:
+        return np.ascontiguousarray(raw[ca, s0:s1], dtype=np.float32)
+    return np.ascontiguousarray(np.concatenate(parts, axis=1), dtype=np.float32)
+
+
+def _q_render_processed(handle, spec):
+    """Montage/filter/normalize/diff over the window server-side, at a working rate
+    bounded by the requested passband + display, then aggregate to display columns.
+    Cost is decoupled from the native sampling rate; result is approximate (a
+    band-limited min/max envelope) with an explicit `validUpToHz` contract."""
+    meta = handle.meta
+    fs = float(meta["fs"]) or 256.0
+    s0, s1, _ = _span_samples(meta, spec.get("startSec"), spec.get("endSec"))
+    span = s1 - s0
+    max_columns = max(16, min(int(spec.get("maxColumns") or 1500), 4000))
+    ch = _resolve_channels(meta, spec.get("channels"))
+    span_sec = max(span / fs, 1e-6)
+    if span_sec > PROCESSED_RENDER_MAX_SPAN_SEC:
+        return ("json", {
+            "error": (
+                f"Processed render is limited to {PROCESSED_RENDER_MAX_SPAN_SEC:g}s windows. "
+                "Zoom in or request a bounded review window before applying DSP."
+            ),
+            "status": 413,
+            "workflowHint": "Use the overview tile to navigate, then request a <=300s processed window.",
+            "window": {"startSec": s0 / fs, "endSec": s1 / fs, "spanSec": span_sec},
+        })
+
+    proc = spec.get("processing") or {}
+    low = max(0.0, float(proc.get("filterLow") or 0))
+    high = max(0.0, float(proc.get("filterHigh") or 0))
+    notch = int(proc.get("notch")) if str(proc.get("notch")) in ("50", "60") else 0
+    montage = str(proc.get("montage") or "raw")
+    norm = str(proc.get("normalization") or "none")
+    diff = int(proc.get("diffOrder") or 0)
+
+    # Working rate: decimate to a display/frequency bounded review rate. A high-cut
+    # gives a clear passband ceiling; high-pass-only/notch-only/montage views still
+    # downsample for wide windows and advertise the resulting validUpToHz contract.
+    display_rate = 3.0 * max_columns / span_sec
+    freq_edge = max(high, low, float(notch or 0))
+    passband_rate = 3.0 * freq_edge if freq_edge > 0 else 0.0
+    working_fs = min(fs, max(MIN_WORK_RATE, passband_rate, display_rate))
+    down = max(1, int(fs // working_fs))
+    working_fs = fs / down
+    work_values = int(len(ch) * max(1, span // down))
+    if work_values > PROCESSED_RENDER_MAX_WORK_VALUES:
+        return ("json", {
+            "error": (
+                "Processed render would exceed the bounded DSP work budget. "
+                "Zoom in, reduce channels, or use a lower-band filter."
+            ),
+            "status": 413,
+            "workflowHint": "Use signal_query/search or overview navigation to choose a smaller focused window.",
+            "window": {"startSec": s0 / fs, "endSec": s1 / fs, "spanSec": span_sec},
+            "budget": {
+                "maxValues": PROCESSED_RENDER_MAX_WORK_VALUES,
+                "estimatedValues": work_values,
+                "workingRateHz": round(working_fs, 2),
+            },
+        })
+
+    ca = np.asarray(ch, dtype=np.int64)
+    src_meta = [meta["channels"][c] for c in ch]
+
+    def read_window():
+        # Chunked boxcar read: never materialize the whole native window, so peak
+        # memory stays bounded (~tens of MB) regardless of span/sampling rate. This
+        # is what keeps a wide (≤ frontend cap) processed render from OOM-ing.
+        return _read_decimate(handle.raw, ca, s0, s1, down)
+
+    block = read_window()
+    block, out_meta = _dsp.apply_montage(block, src_meta, montage)
+    if block.shape[0] == 0:  # montage produced no channels → fall back to raw
+        block = read_window()
+        montage = "raw"
+        block, out_meta = _dsp.apply_montage(block, src_meta, "raw")
+    if low or high or notch:
+        block = _dsp.apply_filter(block, working_fs, low, high, notch)
+    if diff > 0:
+        block = _dsp.apply_diff(block, diff)
+    if norm and norm != "none":
+        gmeans = (np.array([m.get("mean", 0.0) for m in src_meta], dtype=np.float64)
+                  if montage == "raw" else None)
+        block = _dsp.apply_norm(block, norm, proc.get("normOpts"), gmeans,
+                                float(meta.get("globalStd", 1.0)))
+
+    mn, mx, n_cols = _pyramid.agg_columns(block, block, max_columns)
+    out = np.empty((block.shape[0], n_cols, 2), dtype=np.float32)
+    out[:, :, 0] = mn
+    out[:, :, 1] = mx
+    valid_up = round(min(working_fs / 2 * 0.9, high) if high > 0 else working_fs / 2 * 0.9, 1)
+    header = {
+        "op": "render", "mode": "agg", "processed": True,
+        "channels": ch, "nChannels": int(out.shape[0]), "nCols": int(n_cols),
+        "channelMeta": out_meta,
+        "startSample": int(s0), "endSample": int(s1), "fs": fs,
+        "startSec": s0 / fs, "endSec": s1 / fs,
+        "workingRateHz": round(working_fs, 2), "validUpToHz": valid_up,
+        "exact": False, "grain": f"processed:{down}x", "tierFactor": int(down),
+        "coverageSec": [s0 / fs, s1 / fs],
+        "montage": montage, "normalization": norm, "diffOrder": diff,
+        "filter": {"low": low, "high": high, "notch": notch},
+    }
+    return ("tile", _pack_tile(header, out.reshape(-1)))
 
 
 def _q_samples(handle, spec) -> bytes:

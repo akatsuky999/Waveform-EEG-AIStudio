@@ -28,6 +28,12 @@ MAX_OPEN_STORES = 4             # LRU cap on open recordings
 RAW_LINE_MAX_SAMPLES = 200_000  # cap for a render raw-line payload (per span)
 SAMPLES_MAX_PER_CH = 2_000_000  # cap for a `samples` window (per channel)
 EXACT_AGG_MAX_SAMPLES = 10_000_000  # spans wider than this aggregate approximately
+# Processed (server-side DSP) rendering: the working rate adapts to the requested
+# passband + display, decoupling cost from the native sampling rate.
+MIN_WORK_RATE = 64.0            # never decimate a processed window below this rate
+REVIEW_RATE = 512.0            # decimated review tier rate (covers ≤~230 Hz incl. HFO ripples)
+PROCESSED_RENDER_MAX_SPAN_SEC = 300.0       # wide DSP requires a focused review page
+PROCESSED_RENDER_MAX_WORK_VALUES = 25_000_000  # post-decimation channels×samples cap
 FEATURE_WINDOW_SEC = 1.0
 FEATURE_NAMES = ("rms", "lineLength", "p2p", "zeroCross")
 N_FEAT = len(FEATURE_NAMES)

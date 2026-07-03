@@ -26,7 +26,7 @@ import { buildMontage, montageLabel } from "./montage.js";
 import {
   compareEvents, createEvent, legacyMarkersFromEvents, serializeEventsDocument,
 } from "../core/events.js";
-import { fetchWindow, fetchSamples } from "../core/api.js";
+import { fetchWindow, fetchSamples, fetchProcessedWindow } from "../core/api.js";
 import {
   buildWindowedAgentContext,
   WINDOWED_FULL_ARRAY_EXPORT_UNAVAILABLE,
@@ -34,10 +34,19 @@ import {
 
 const GROUP_COLORS = ["#c45f3c", "#5f86b3", "#6f8350", "#b08240", "#8a6aa0", "#4f8a86", "#b5654a", "#7a7d52"];
 
-// Windowed DSP budget: when filter/montage/norm/diff is active and the visible
-// window's (samples × source-channels) fits this, we fetch the raw window and run
-// the full pipeline on it; beyond it the overview stays an unprocessed LoD view.
-const PROC_BUDGET_VALUES = 4_000_000;
+// Client-side EXACT DSP budget: only when the visible window's (samples ×
+// source-channels) fits this do we fetch the raw window and run the full pipeline
+// in the browser (deep zoom, exact). Beyond it — including any wide window on a
+// high-sampling-rate file — DSP is computed SERVER-SIDE at a display-bounded
+// working rate (see _fetchServerProcessed). Lowered from 4M so high-rate files no
+// longer stall the browser at normal time scales.
+const PROC_BUDGET_VALUES = 400_000;
+
+// Above this visible span, per-sample DSP (montage / filter / normalization) is not
+// applied: waveforms are visually squished at that scale and a wide processed read
+// is costly. The viewer shows the unprocessed overview + a gentle "zoom in" hint —
+// matching how recordings are reviewed in short pages, not one 6 h image.
+const MAX_DSP_SPAN_SEC = 300;
 
 const colorCache = new Map();
 function toThreeColor(css) {
@@ -122,12 +131,15 @@ export class WaveformViewer {
     this._tileTimer = null;
     this._tileRange = null;     // [start,end] the current geometry was requested for
     this._tileCache = new Map();// small LRU of recent tiles
+    this._tileAbort = null;     // aborts superseded network tile/sample requests
     // Processed-window sub-mode: when DSP is active and the window fits the budget,
     // we load the raw window and run the full pipeline on it (filter/montage/norm/
     // diff + frequency analysis). `_sampleOffset` shifts geometry X to absolute time.
     this._procMode = false;
     this._sampleOffset = 0;
     this._srcModel = null;      // saved source-channel model (to restore in tile mode)
+    this._procModelKey = null;  // signature of the server-processed channel model in effect
+    this._dspTooWide = false;   // DSP requested but the visible span exceeds MAX_DSP_SPAN_SEC
 
     this.mouse = { x: -1, y: -1, inside: false };
     this.onReadout = null;
@@ -225,6 +237,7 @@ export class WaveformViewer {
     this._sampleOffset = 0;
     this._srcModel = null;
     this._tileSeq++;            // invalidate any in-flight windowed fetch
+    this._abortTileRequest();
     clearTimeout(this._tileTimer);
     const settings = preserveSettings ? {
       diffOrder: this.diffOrder,
@@ -278,6 +291,8 @@ export class WaveformViewer {
   // server LoD store, so the on-screen geometry is always ~screen-width — payload
   // and vertex count are independent of recording length.
   setWindowedData(meta, token) {
+    this._tileSeq++;
+    this._abortTileRequest();
     this.windowed = true;
     this.windowToken = token;
     this.windowMeta = meta;
@@ -352,6 +367,12 @@ export class WaveformViewer {
     this._tileTimer = setTimeout(() => this._refreshWindowed(), 70);
   }
 
+  _abortTileRequest() {
+    if (!this._tileAbort) return;
+    this._tileAbort.abort();
+    this._tileAbort = null;
+  }
+
   async _fetchTile() {
     if (!this.windowed || !this.windowToken) return;
     const maxColumns = Math.max(64, Math.round(this.plotW || 1000));
@@ -359,10 +380,13 @@ export class WaveformViewer {
     this._tileRange = [t0, t1];   // optimistic, so repeated renders don't reschedule
     const key = `${t0.toFixed(3)}|${t1.toFixed(3)}|${maxColumns}`;
     const seq = ++this._tileSeq;
+    this._abortTileRequest();
     const cached = this._tileCache.get(key);
     if (cached) { this.tile = cached; this._buildLinesFromTile(); return; }
+    const controller = new AbortController();
+    this._tileAbort = controller;
     try {
-      const tile = await fetchWindow(this.windowToken, t0, t1, maxColumns, null);
+      const tile = await fetchWindow(this.windowToken, t0, t1, maxColumns, null, { signal: controller.signal });
       if (seq !== this._tileSeq) return; // a newer request superseded this one
       this._tileCache.set(key, tile);
       if (this._tileCache.size > 24) this._tileCache.delete(this._tileCache.keys().next().value);
@@ -370,6 +394,8 @@ export class WaveformViewer {
       this._buildLinesFromTile();
     } catch (err) {
       if (err?.name !== "AbortError") { /* keep the previous geometry on a blip */ }
+    } finally {
+      if (this._tileAbort === controller) this._tileAbort = null;
     }
   }
 
@@ -387,11 +413,24 @@ export class WaveformViewer {
     if (!this.windowed || !this.windowToken) return;
     const spanSamples = Math.max(1, Math.round((this.tEnd - this.tStart) * this.fs));
     const nSource = this.windowMeta?.nChannels || (this._srcModel?.nChannels ?? this.nChannels);
-    if (this._dspActive() && spanSamples * nSource <= PROC_BUDGET_VALUES) {
-      return this._fetchProcessedWindow();
+    if (this._dspActive()) {
+      if ((this.tEnd - this.tStart) > MAX_DSP_SPAN_SEC) {
+        // Span too long for per-sample DSP → unprocessed overview + a gentle hint.
+        if (this._procMode) this._restoreSourceModel();
+        this._procMode = false; this._procModelKey = null; this._sampleOffset = 0;
+        this.dispChannels = []; this._dspTooWide = true;
+        return this._fetchTile();
+      }
+      this._dspTooWide = false;
+      // Deep zoom (small window) → exact client-side DSP. Wide window (≤ cap) →
+      // server-side processed tile at a display-bounded working rate.
+      if (spanSamples * nSource <= PROC_BUDGET_VALUES) return this._fetchProcessedWindow();
+      return this._fetchServerProcessed();
     }
+    this._dspTooWide = false;
     if (this._procMode) this._restoreSourceModel();
     this._procMode = false;
+    this._procModelKey = null;
     this._sampleOffset = 0;
     this.dispChannels = [];
     return this._fetchTile();
@@ -420,13 +459,19 @@ export class WaveformViewer {
   async _fetchProcessedWindow() {
     const t0 = this.tStart, t1 = this.tEnd;
     this._tileRange = [t0, t1];
+    this._procModelKey = null;   // server path will rebuild its model when we zoom back out
     const seq = ++this._tileSeq;
+    this._abortTileRequest();
+    const controller = new AbortController();
+    this._tileAbort = controller;
     let res;
     try {
-      res = await fetchSamples(this.windowToken, t0, t1, null);
+      res = await fetchSamples(this.windowToken, t0, t1, null, { signal: controller.signal });
     } catch (err) {
       if (err?.name !== "AbortError") { /* keep previous geometry on a blip */ }
       return;
+    } finally {
+      if (this._tileAbort === controller) this._tileAbort = null;
     }
     if (seq !== this._tileSeq) return;
     const wasProc = this._procMode;
@@ -440,6 +485,94 @@ export class WaveformViewer {
     if (this.selectedChannel === null || this.selectedChannel >= this.nChannels) this.selectedChannel = 0;
     this.render();
     this._emitSelection();
+  }
+
+  // The current processing settings as a server query spec.
+  _processingSpec() {
+    const fo = this.filterOpts || {};
+    return {
+      montage: this.montageMode || "raw",
+      filterLow: Number(fo.low) || 0,
+      filterHigh: Number(fo.high) || 0,
+      notch: (fo.notch === "50" || fo.notch === "60") ? fo.notch : "off",
+      normalization: this.normMethod || "none",
+      normOpts: { ...(this.normOpts || {}) },
+      diffOrder: this.diffOrder || 0,
+    };
+  }
+  _procKey(p) {
+    const normOpts = p.normOpts || {};
+    const normKey = JSON.stringify(normOpts, Object.keys(normOpts).sort());
+    return `${p.montage}|${p.filterLow}|${p.filterHigh}|${p.notch}|${p.normalization}|${normKey}|${p.diffOrder}`;
+  }
+
+  // Wide / high-rate window: compute the processed view SERVER-SIDE (montage +
+  // filter + norm + diff at a display-bounded working rate) and render the returned
+  // min/max envelope. Cost is decoupled from the native sampling rate, so a 4096 Hz
+  // file filters over a wide window as smoothly as a 256 Hz one.
+  async _fetchServerProcessed() {
+    if (!this.windowed || !this.windowToken) return;
+    const maxColumns = Math.max(64, Math.round(this.plotW || 1000));
+    const t0 = this.tStart, t1 = this.tEnd;
+    this._tileRange = [t0, t1];
+    const proc = this._processingSpec();
+    const key = `P|${t0.toFixed(3)}|${t1.toFixed(3)}|${maxColumns}|${this._procKey(proc)}`;
+    const seq = ++this._tileSeq;
+    this._abortTileRequest();
+    const cached = this._tileCache.get(key);
+    if (cached) { this._applyProcessedTile(cached); return; }
+    const controller = new AbortController();
+    this._tileAbort = controller;
+    try {
+      const tile = await fetchProcessedWindow(this.windowToken, t0, t1, maxColumns, null, proc, { signal: controller.signal });
+      if (seq !== this._tileSeq) return;            // a newer request superseded this one
+      this._tileCache.set(key, tile);
+      if (this._tileCache.size > 24) this._tileCache.delete(this._tileCache.keys().next().value);
+      this._applyProcessedTile(tile);
+    } catch (err) {
+      if (err?.name !== "AbortError") { /* keep the previous geometry on a blip */ }
+    } finally {
+      if (this._tileAbort === controller) this._tileAbort = null;
+    }
+  }
+
+  // Render a server-processed agg tile. Montage (bipolar/local/CAR) changes the
+  // channel set, so swap the channel model from the tile's derived channelMeta;
+  // filter/norm/diff-only keeps the source channels.
+  _applyProcessedTile(tile) {
+    const h = tile.header;
+    const montage = h.montage || "raw";
+    if (montage === "raw") {
+      if (this._procModelKey && this._procModelKey !== "raw") this._restoreSourceModel();
+      this._procModelKey = "raw";
+      this._procMode = false;                       // model is the source model
+    } else {
+      const key = `${montage}|${h.nChannels}`;
+      if (key !== this._procModelKey) { this._setProcessedChannelModel(h); this._procModelKey = key; }
+      this._procMode = true;                        // model differs from source (restore on leave)
+    }
+    this._sampleOffset = 0;                          // agg geometry already uses absolute startSample
+    this.tile = tile;
+    this._buildLinesFromTile();
+    this._emitSelection();
+  }
+
+  // Build the channel model for a montaged server tile from its derived channelMeta.
+  _setProcessedChannelModel(h) {
+    const cm = (h.channelMeta || []).map((m) => ({
+      label: m.label, group: m.group, montage: m.montage || "raw", sourceIndex: m.sourceIndex,
+    }));
+    this.channelMeta = cm;
+    this.nChannels = cm.length;
+    this.channelColor = cm.map((c) => this.groupColor.get(c.group) || GROUP_COLORS[0]);
+    this.channelStats = cm.map(() => ({ rms: 0, freq: 0, bands: {}, dominantBand: "" }));
+    this.channelFreqs = cm.map(() => 0);
+    this.hiddenChannels = new Set([...(this.hiddenChannels || [])].filter((i) => i < this.nChannels));
+    if (this.soloChannel != null && this.soloChannel >= this.nChannels) this.soloChannel = null;
+    if (this.pinnedChannel != null && this.pinnedChannel >= this.nChannels) this.pinnedChannel = null;
+    if (this.selectedChannel === null || this.selectedChannel >= this.nChannels) this.selectedChannel = 0;
+    this._rebuildOrder();
+    this._emitChannels?.();
   }
 
   // Exact client-side DSP applied to a raw (deep-zoom) window. Montage is a
@@ -1360,10 +1493,18 @@ export class WaveformViewer {
     // hint to zoom in) — the exact/approx contract made visible.
     if (this.windowed) {
       let label = null, ok = false;
-      if (this._procMode) { label = "EXACT · processed"; ok = true; }
+      const h = this.tile?.header;
+      if (h && h.processed) {
+        // server-processed wide window: montage/filter applied at a working rate
+        ok = true;
+        const msPerCol = ((h.endSample - h.startSample) / Math.max(1, h.nCols) / this.fs) * 1000;
+        const cap = h.validUpToHz ? ` · ≤${Math.round(h.validUpToHz)}Hz` : "";
+        label = `PROCESSED ≈${msPerCol.toFixed(0)}ms/col${cap}`;
+      }
+      else if (this._procMode) { label = "EXACT · processed"; ok = true; }
+      else if (this._dspTooWide) { label = `WINDOW ${Math.round(this.tEnd - this.tStart)}s · zoom in ≤${MAX_DSP_SPAN_SEC}s to apply DSP`; ok = false; }
       else if (this._dspActive()) { label = "ZOOM IN TO APPLY filter/montage"; ok = false; }
-      else if (this.tile?.header) {
-        const h = this.tile.header;
+      else if (h) {
         ok = !!h.exact;
         label = ok ? "EXACT" : `OVERVIEW ≈${(((h.resolution || 1) / this.fs) * 1000).toFixed(0)} ms/col`;
       }

@@ -34,6 +34,25 @@ export async function fetchWindow(token, startSec, endSec, maxColumns, channels,
   return parseWindowTile(await res.arrayBuffer());
 }
 
+/** Fetch a SERVER-PROCESSED render tile: montage / filter / normalization / diff
+ *  applied server-side at a display-bounded working rate (cost decoupled from the
+ *  native sampling rate). `processing` = { montage, filterLow, filterHigh, notch,
+ *  normalization, normOpts, diffOrder }. Returns the same agg tile shape as
+ *  fetchWindow, with header.processed / workingRateHz / validUpToHz. */
+export async function fetchProcessedWindow(token, startSec, endSec, maxColumns, channels, processing, { signal } = {}) {
+  const body = { token, op: "render", startSec, endSec, maxColumns, processing };
+  if (channels && channels.length) body.channels = channels;
+  const res = await fetch("/api/signal/query", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to fetch processed window.");
+  }
+  return parseWindowTile(await res.arrayBuffer());
+}
+
 /** Fetch the exact raw samples for a window (per-channel Float32Arrays), used to
  *  run the full DSP pipeline / frequency analysis on a large recording's window. */
 export async function fetchSamples(token, startSec, endSec, channels, { signal } = {}) {

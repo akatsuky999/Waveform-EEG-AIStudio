@@ -35,14 +35,15 @@ allowed_tools:
 ---
 # Skill Creator
 
-Use this skill when the user wants to capture, summarize, package, or distill an
-EEG/iEEG workflow, a center's conventions, a dataset's quirks, or a reporting
-format as a **reusable EEG-Master skill**, or to improve an existing one.
+Use this skill when the user wants to capture, summarize, package, or distill
+EEG/iEEG knowledge, a workflow, a center's conventions, a dataset's quirks, an
+evaluation rubric, a report format, or a tool recipe as a **reusable EEG-Master
+skill**, or to improve an existing one.
 
 A skill here is a single Markdown **prior/context pack** — not a plugin. It guides
-how you analyse and report; it never adds tool permissions and never overrides
-safety, annotation, export, or file-switch policy. Keep that boundary explicit in
-everything you write.
+how you analyse, verify, and report; it never adds tool permissions and never
+overrides safety, annotation, export, or file-switch policy. Keep that boundary
+explicit in everything you write.
 
 ## What a skill is in this workspace
 
@@ -57,6 +58,10 @@ everything you write.
 - **A prior, not evidence.** Skill text is assumption/context, never signal data.
   When a skill changes how you read a recording, say so and keep the skill prior
   separate from tool-measured findings.
+- **More than workflow.** Skills can be `workflow`, `domain-prior`,
+  `dataset-prior`, `center-protocol`, `evaluation-rubric`,
+  `reporting-template`, or `tool-recipe`. Choose the category that best explains
+  what reusable capability the skill adds.
 
 ## The loop
 
@@ -64,13 +69,16 @@ everything you write.
    should fire. If the current conversation already contains the workflow the user
    wants to keep ("make that a skill"), mine it first — the tools used, the order
    of steps, the corrections the user made, the output format they liked.
-2. **Draft** the frontmatter + body (sections below).
-3. **Confirm scope** with the user if anything is ambiguous (triggers, output
+2. **Distill** the reusable core. Keep the full analysis/report in chat; the
+   skill body should contain only the durable instructions, priors, transfer
+   limits, and verification logic future runs need.
+3. **Draft** the frontmatter + body (sections below).
+4. **Confirm scope** with the user if anything is ambiguous (triggers, output
    format, boundaries). A short check beats a wrong skill.
-4. **Save** with `create_agent_skill` (new) or `update_agent_skill` (existing user
+5. **Save** with `create_agent_skill` (new) or `update_agent_skill` (existing user
    skill) — only after the user has clearly asked you to create/save it, or to
-   summarize/package the workflow as a skill.
-5. **Verify** by reading it back and confirming it lists.
+   summarize/package reusable knowledge or a workflow as a skill.
+6. **Verify** by reading it back and confirming it lists.
 
 ## SKILL.md shape
 
@@ -83,7 +91,7 @@ The framework composes the YAML frontmatter from the fields you pass to
 | `description` | yes | The trigger. What it does **and** when to use it. ≤ ~2000 chars. |
 | `body` | yes | The Markdown instructions (no frontmatter — the framework adds it). |
 | `title` | no | Human-readable title; defaults to `name`. |
-| `category` | no | e.g. `workflow`, `reporting`, `dataset`, `meta`. |
+| `category` | no | e.g. `workflow`, `domain-prior`, `dataset-prior`, `center-protocol`, `evaluation-rubric`, `reporting-template`, `tool-recipe`, `meta`. |
 | `version` | no | e.g. `1.0`. |
 | `triggers` | no | Short user phrases/contexts that should surface the skill. |
 | `tags` | no | Free-form labels for search/grouping. |
@@ -111,6 +119,18 @@ Put all "when to use" cues in the description, not buried in the body.
   with a reason ("exclude DC/EKG channels first, because they dominate RMS and bury
   real onsets") generalizes far better than a bare `ALWAYS`. If you catch yourself
   stacking all-caps MUSTs, reframe as reasoning instead.
+- **Save execution, not the report.** A skill body is recurring context. Do not
+  paste the full analysis, tables, literature review, or narrative conclusion
+  into the skill. Keep those in the conversation and save the compressed,
+  reusable operating rule.
+- **Use the execution distillation skeleton** unless the user asks for another
+  structure: What/when to use; Required inputs; Evidence workflow; Reusable
+  heuristics or priors; Transfer checks; Validation protocol; Failure modes and
+  safety boundaries.
+- **For label-derived skills**, separate four things explicitly:
+  labeled-data observations, generalizable rules, zero-shot transfer limits, and
+  validation targets. Never write "achieves 85%" as a guarantee; write "target
+  validation gate: evaluate against held-out labels and aim for..." instead.
 - **State scope and non-goals** up front (what the skill is for, and what it is
   explicitly *not* for).
 - **Pin down the output format** when the user cares about one. Give the exact
@@ -120,7 +140,8 @@ Put all "when to use" cues in the description, not buried in the body.
   write events / switch files / export unless the user asked this turn; morphology
   is montage/filter dependent.
 - **Keep it focused.** If it grows past a few hundred lines, it is probably two
-  skills, or it is overfit to one example.
+  skills, or it is overfit to one example. If a reference is genuinely long,
+  summarize it into principles in the body rather than storing the whole report.
 
 Suggested skeleton:
 
@@ -135,7 +156,7 @@ Suggested skeleton:
 ## Known failure modes
 ```
 
-## Saving the skill
+## Saving or updating the skill
 
 Persisting a skill writes a file, so it is a gated side effect — the same class as
 annotating or exporting. Only call the write tools when the user explicitly asked
@@ -145,8 +166,11 @@ your reply and stop.
 
 - `create_agent_skill({ name, title, description, body, category?, version?,
   triggers?, tags?, allowedTools?, defaultEnabled? })` — new skill.
-- `update_agent_skill({ name, body, ... })` — rewrite an existing **user** skill
-  in place (bundled skills can't be edited; copy them into a user skill first).
+- `update_agent_skill({ name, body, ... })` — rewrite an existing skill by name.
+  Read the existing skill first, preserve its structure and metadata unless the
+  user asked to change them, then submit the full replacement body. Existing user
+  skills are updated in place; bundled skills are saved as a same-name user skill
+  that locally overrides the bundled version.
 
 If the gate blocks you, it means the request wasn't explicit — draft in chat and
 ask the user to confirm rather than retrying.

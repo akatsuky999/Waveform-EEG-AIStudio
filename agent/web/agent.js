@@ -16,6 +16,16 @@ import {
   initConversations,
 } from "./conversations.js";
 import { exportConversation } from "./conversation-export.js";
+import {
+  ATTACHMENT_FILE_LIMIT_BYTES,
+  getPersistentAttachment,
+  listPersistentAttachments,
+  markPersistentAttachmentsSent,
+  prunePersistentAttachments,
+  removePersistentAttachment,
+  removePersistentConversation,
+  savePersistentAttachment,
+} from "./attachment-cache.js";
 
 const DEFAULT_MAX_TURNS = 16;    // fallback; UI config controls the real cap
 const MAX_CALLS_PER_TURN = 8;   // tool-call budget per turn
@@ -37,6 +47,10 @@ export function initAgent(host) {
   let controller = null;  // AbortController for the active run
   let pendingContinuation = null;
   const discardedConversationIds = new Set();
+  // Companion files are cached in memory for the live UI and persisted in
+  // IndexedDB so the backend scratch cache can be rebuilt after a hot reload.
+  const attachmentsByConv = new Map();  // convId -> [{ id?, name, kind, sizeBytes, status, sent, error }]
+  let attachmentUploadQueue = Promise.resolve();
 
   const ui = initDrawerUI(host, {
     onSend: sendAIMessage,
@@ -48,8 +62,145 @@ export function initAgent(host) {
     onExport: exportActive,
     onContinue: continueRun,
     onOpenConfig: () => host.openAgentSettings?.(),
+    onAttachFiles: attachFiles,
+    onRemoveAttachment: removeAttachment,
   });
   host.getAgentConfiguration = () => ui.getPublicConfig();
+
+  // ---- companion-file attachments ----
+  function conversationAttachments(id = conv?.id) {
+    return id ? (attachmentsByConv.get(id) || []) : [];
+  }
+  function pendingAttachments(id = conv?.id) {
+    return conversationAttachments(id).filter((item) => !item.sent);
+  }
+  function readyPendingAttachments(id = conv?.id) {
+    return pendingAttachments(id).filter((item) => item.status === "ready" && item.id);
+  }
+  function mergeAttachmentSummary(id, summary, defaults = {}) {
+    if (!id || !summary?.id) return null;
+    const list = attachmentsByConv.get(id) || [];
+    attachmentsByConv.set(id, list);
+    let entry = list.find((item) => item.id === summary.id);
+    if (!entry) {
+      entry = { status: "ready", error: null, ...defaults };
+      list.push(entry);
+    }
+    Object.assign(entry, summary, { status: "ready", error: null, persisted: !!summary.persisted || !!defaults.persisted });
+    if (defaults.sent != null && entry.sent == null) entry.sent = !!defaults.sent;
+    return entry;
+  }
+  async function restorePersistentAttachments(id = conv?.id) {
+    if (!id) return [];
+    const persisted = await listPersistentAttachments(id).catch(() => []);
+    persisted.forEach((item) => mergeAttachmentSummary(id, item, { sent: !!item.sent, persisted: true }));
+    return persisted;
+  }
+  async function syncAttachments({ restore = true } = {}) {
+    host.attachments.setConversation(conv?.id || null);
+    if (restore && conv?.id) await restorePersistentAttachments(conv.id);
+    ui.renderAttachments(pendingAttachments());
+  }
+  function renderAttachmentsFor(id) {
+    if (conv?.id === id) ui.renderAttachments(pendingAttachments(id));
+  }
+  function readFileText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Could not read the file."));
+      reader.readAsText(file);
+    });
+  }
+  async function attachFiles(fileList) {
+    const files = [...(fileList || [])];
+    if (!files.length || !conv) return;
+    host.attachments.setConversation(conv.id);
+    const convId = conv.id;
+    const list = attachmentsByConv.get(convId) || [];
+    attachmentsByConv.set(convId, list);
+    const task = (async () => {
+      for (const file of files) {
+        const entry = { name: file.name, kind: null, sizeBytes: file.size, status: "reading", error: null, sent: false };
+        list.push(entry);
+        renderAttachmentsFor(convId);
+        try {
+          if (file.size > ATTACHMENT_FILE_LIMIT_BYTES) throw new Error("File is larger than the 4 MB attachment limit.");
+          const text = await readFileText(file);
+          entry.status = "uploading";
+          renderAttachmentsFor(convId);
+          const summary = await host.attachments.upload({ conversationId: convId, name: file.name, text, source: "attach" });
+          const persistent = await savePersistentAttachment(convId, summary, text, { sent: false });
+          Object.assign(entry, persistent, { status: "ready", error: null });
+        } catch (error) {
+          entry.status = "error";
+          entry.error = error.message || "Attach failed.";
+        }
+        renderAttachmentsFor(convId);
+      }
+    })();
+    attachmentUploadQueue = attachmentUploadQueue.catch(() => {}).then(() => task);
+    return task;
+  }
+  async function removeAttachment(target) {
+    const list = attachmentsByConv.get(conv?.id);
+    if (!list) return;
+    const index = list.findIndex((item) => (item.id && item.id === target) || item === target || item.name === target);
+    if (index < 0) return;
+    const [removed] = list.splice(index, 1);
+    if (removed?.id) {
+      await Promise.allSettled([
+        host.attachments.remove(removed.id),
+        removePersistentAttachment(conv?.id, removed.id),
+      ]);
+    }
+    ui.renderAttachments(pendingAttachments());
+  }
+  async function markAttachmentsSent(id, files = []) {
+    const sentIds = new Set(files.map((file) => file.id).filter(Boolean));
+    if (!sentIds.size) return;
+    for (const item of conversationAttachments(id)) {
+      if (item.id && sentIds.has(item.id)) item.sent = true;
+    }
+    await markPersistentAttachmentsSent(id, sentIds).catch(() => {});
+  }
+  async function ensureBackendAttachments(id = conv?.id, signal = null) {
+    if (!id) return [];
+    host.attachments.setConversation(id);
+    const persisted = await restorePersistentAttachments(id);
+    if (!persisted.length) return [];
+    let backend = [];
+    try {
+      backend = await host.attachments.list(signal);
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") throw error;
+      return persisted;
+    }
+    const backendIds = new Set(backend.map((item) => item.id).filter(Boolean));
+    for (const summary of persisted) {
+      if (backendIds.has(summary.id)) continue;
+      const record = await getPersistentAttachment(id, summary.id).catch(() => null);
+      if (!record?.text) continue;
+      try {
+        const restored = await host.attachments.upload({
+          conversationId: id,
+          id: record.id,
+          name: record.name,
+          text: record.text,
+          source: "indexeddb-restore",
+        }, signal);
+        mergeAttachmentSummary(id, { ...restored, sent: !!record.sent, persisted: true }, { sent: !!record.sent, persisted: true });
+      } catch (error) {
+        if (signal?.aborted || error?.name === "AbortError") throw error;
+        const entry = mergeAttachmentSummary(id, summary, { sent: !!summary.sent, persisted: true });
+        if (entry) {
+          entry.status = "error";
+          entry.error = error.message || "Could not restore attachment.";
+        }
+      }
+    }
+    return persisted;
+  }
 
   // Export the active in-memory conversation (which keeps full images) as
   // JSON / HTML / Markdown.
@@ -75,6 +226,8 @@ export function initAgent(host) {
     conv = existing || createConversation();
     if (existing) ui.renderConversation(conv.log);
     else ui.resetMessages();
+    await prunePersistentAttachments(listConversations().map((item) => item.id)).catch(() => {});
+    await syncAttachments();
     refreshHistory();
   }
 
@@ -92,6 +245,7 @@ export function initAgent(host) {
     conv = createConversation();
     setActiveId(conv.id);
     ui.resetMessages();
+    syncAttachments({ restore: false }).catch(() => {});
     refreshHistory();
     ui.closeHistory();
     ui.focusInput();
@@ -105,6 +259,7 @@ export function initAgent(host) {
     conv = loaded;
     setActiveId(id);
     ui.renderConversation(conv.log);
+    await syncAttachments();
     refreshHistory();
     ui.closeHistory();
   }
@@ -113,11 +268,14 @@ export function initAgent(host) {
     if (busy && controller && id === conv?.id) stopRun();
     if (pendingContinuation?.convId === id) pendingContinuation = null;
     discardedConversationIds.add(id);
+    attachmentsByConv.delete(id);
+    await removePersistentConversation(id).catch(() => {});
     const nextActive = deleteConversation(id);
     if (conv?.id === id) {
       const loaded = nextActive ? await getConversation(nextActive) : null;
       conv = loaded || createConversation();
       if (loaded) ui.renderConversation(conv.log); else ui.resetMessages();
+      await syncAttachments();
     }
     refreshHistory();
   }
@@ -135,20 +293,27 @@ export function initAgent(host) {
   }
 
   async function sendAIMessage(rawText) {
-    const text = (rawText || "").trim();
-    if (!text || busy) return;
+    let text = (rawText || "").trim();
+    if (busy) return;
+    await attachmentUploadQueue.catch(() => {});
+    const messageFiles = readyPendingAttachments();
+    if (!text && !messageFiles.length) return;
+    if (!text) text = "Please inspect the attached file(s).";
     const config = checkedConfig();
     if (!config) return;
 
     ui.setOpen(true);
     ui.saveSettings();
     ui.clearInput();
-    ui.appendUserMessage(text);
+    const fileSummaries = messageFiles.map(messageAttachmentSummary);
+    ui.appendUserMessage(text, fileSummaries);
 
     const runConv = conv;
     const firstMessage = runConv.transcript.length === 0;
-    runConv.transcript.push({ role: "user", content: text });
-    runConv.log.push({ kind: "user", text });
+    runConv.transcript.push({ role: "user", content: userMessageContent(text, fileSummaries) });
+    runConv.log.push({ kind: "user", text, attachments: fileSummaries });
+    await markAttachmentsSent(runConv.id, fileSummaries);
+    await syncAttachments();
     if (firstMessage) { runConv.title = titleFromText(text); setActiveId(runConv.id); }
 
     pendingContinuation = null;
@@ -177,11 +342,13 @@ export function initAgent(host) {
     const runController = new AbortController();
     controller = runController;
     const signal = runController.signal;
+    host.attachments.setConversation(runConv.id);
     busy = true; ui.setBusy(true);
 
     let emptyStreak = 0;
     let stepLimited = false;
     try {
+      await ensureBackendAttachments(runConv.id, signal);
       for (let turn = 0; turn < maxTurns; turn++) {
         if (signal.aborted) break;
         ui.setStatus("busy", `Working · step ${turn + 1}/${maxTurns}`);
@@ -248,6 +415,9 @@ export function initAgent(host) {
             }
             const group = calls.slice(callIndex, groupEnd);
             const cards = group.map((call) => ui.beginToolCard(call.name, call.arguments));
+            if (group.some((call) => toolMayNeedAttachments(call.name))) {
+              await ensureBackendAttachments(runConv.id, signal);
+            }
             const outcomes = safe
               ? await Promise.all(group.map((call) => runToolCall(host, call, signal, actionPolicy)))
               : [await runToolCall(host, group[0], signal, actionPolicy)];
@@ -337,6 +507,14 @@ export function initAgent(host) {
     const context = host.signal.getState();
     const skills = skillContext(config);
     if (skills.available.length || skills.enabled.length) context.agentSkills = skills;
+    const files = conversationAttachments().filter((item) => item.status === "ready" && item.id && item.sent);
+    if (files.length) {
+      context.contextFiles = {
+        count: files.length,
+        files: files.map((item) => ({ id: item.id, name: item.name, kind: item.kind, sizeBytes: item.sizeBytes, preview: compactFilePreview(item.preview) })),
+        policy: "Companion files the user attached to THIS conversation. They are stored locally with the conversation and restored into the backend tool cache when needed. Inspect with read_context_file/grep_context_file and use in run_python via the `attachments` global. Align any time column to the recording and preview before importing events; only write events when the user explicitly asks in this turn.",
+      };
+    }
     return context;
   }
 
@@ -361,6 +539,48 @@ export function initAgent(host) {
   }
 
   initConversations().then(loadActive).catch(loadActive);
+}
+
+// Keep the injected manifest small: enough for the model to know a file exists
+// and how it is shaped, without dumping every row into the system context.
+function compactFilePreview(preview) {
+  if (!preview || typeof preview !== "object") return null;
+  const out = {};
+  if (Array.isArray(preview.header)) out.header = preview.header.slice(0, 24);
+  if (preview.delimiter) out.delimiter = preview.delimiter;
+  if (Number.isFinite(preview.rowCount)) out.rowCount = preview.rowCount;
+  if (Array.isArray(preview.timeColumns) && preview.timeColumns.length) {
+    out.timeColumns = preview.timeColumns.map((col) => col.name);
+  }
+  if (preview.shape) out.shape = preview.shape;
+  if (preview.form === "text" && Number.isFinite(preview.lineCount)) out.lineCount = preview.lineCount;
+  return Object.keys(out).length ? out : null;
+}
+
+function messageAttachmentSummary(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    kind: item.kind,
+    sizeBytes: item.sizeBytes,
+    preview: compactFilePreview(item.preview),
+  };
+}
+
+function userMessageContent(text, files = []) {
+  if (!files.length) return text;
+  const manifest = files.map((file, index) => {
+    const preview = file.preview ? `; preview=${JSON.stringify(file.preview)}` : "";
+    return `${index + 1}. ${file.name} (id=${file.id}, kind=${file.kind || "text"}, size=${file.sizeBytes || 0} bytes${preview})`;
+  }).join("\n");
+  return `${text}\n\nAttached companion files sent with this message:\n${manifest}\nUse list_context_files/read_context_file/grep_context_file before parsing, and align any time column to the current recording before adding events.`;
+}
+
+function toolMayNeedAttachments(name) {
+  return name === "list_context_files"
+    || name === "read_context_file"
+    || name === "grep_context_file"
+    || name === "run_python";
 }
 
 // Keep tool_call/tool pairing valid when trimming: start the window at a user turn.

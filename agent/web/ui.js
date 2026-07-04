@@ -333,11 +333,12 @@ export function initDrawerUI(host, handlers = {}) {
   }
   const clearEmpty = () => msgsEl().querySelector(".ai-empty")?.remove();
 
-  function appendUserMessage(text) {
+  function appendUserMessage(text, attachments = []) {
     clearEmpty();
     const el = document.createElement("div");
     el.className = "ai-msg user";
     el.innerHTML = `<div class="md">${renderMarkdown(text)}</div>`;
+    appendMessageAttachments(el, attachments);
     $("aiMessages").appendChild(el);
     scrollDown(true);
   }
@@ -468,7 +469,7 @@ export function initDrawerUI(host, handlers = {}) {
     pinned = true;
     if (!Array.isArray(log) || !log.length) { resetMessages(); return; }
     for (const item of log) {
-      if (item.kind === "user") appendUserMessage(item.text);
+      if (item.kind === "user") appendUserMessage(item.text, item.attachments);
       else if (item.kind === "assistant") addAssistantMessage(item.text);
       else if (item.kind === "tool") addCompletedTool(item.name, item.args, item.outcome);
       else if (item.kind === "note") appendNote(item.text);
@@ -530,7 +531,7 @@ export function initDrawerUI(host, handlers = {}) {
       maxAgentImages: cfg.maxAgentImages,
       maxImageWindowSec: cfg.maxImageWindowSec,
       skills: cfg.skills,
-      storage: "localStorage+sessionStorage",
+      storage: "localStorage+IndexedDB+sessionStorage",
     };
   }
 
@@ -631,6 +632,33 @@ export function initDrawerUI(host, handlers = {}) {
       handlers.onSend?.($("aiInput").value);
     }
   });
+
+  // ---- composer file attachments (button + drag/drop) ----
+  const attachInput = $("aiAttachInput");
+  $("aiAttachBtn")?.addEventListener("click", () => attachInput?.click());
+  attachInput?.addEventListener("change", () => {
+    if (attachInput.files?.length) handlers.onAttachFiles?.(attachInput.files);
+    attachInput.value = "";
+  });
+  const drawer = $("aiDrawer");
+  let dragDepth = 0;
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  // stopPropagation isolates the drawer from the app's window-level EEG file
+  // loader (main.js) — a label CSV dropped here must attach, never load as a
+  // recording.
+  drawer?.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); dragDepth++; drawer.classList.add("dropping"); });
+  drawer?.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); });
+  drawer?.addEventListener("dragleave", (e) => { if (!hasFiles(e)) return; e.stopPropagation(); if (--dragDepth <= 0) { dragDepth = 0; drawer.classList.remove("dropping"); } });
+  drawer?.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); e.stopPropagation(); dragDepth = 0; drawer.classList.remove("dropping");
+    if (e.dataTransfer.files?.length) handlers.onAttachFiles?.(e.dataTransfer.files);
+  });
+  $("aiAttachments")?.addEventListener("click", (e) => {
+    const remove = e.target.closest("[data-remove]");
+    if (remove) handlers.onRemoveAttachment?.(remove.dataset.remove);
+  });
+
   msgsEl().addEventListener("scroll", () => { pinned = nearBottom(); updateJump(); });
   $("aiJump")?.addEventListener("click", () => { pinned = true; scrollDown(true); });
   skills.load();
@@ -638,11 +666,68 @@ export function initDrawerUI(host, handlers = {}) {
   return {
     appendUserMessage, beginAssistant, beginToolCard, appendNote, appendError, resetMessages,
     renderConversation, renderHistory, closeHistory, focusInput,
-    appendStepLimitNotice,
+    appendStepLimitNotice, renderAttachments: renderComposerAttachments,
     setBusy, setStatus, setOpen, saveSettings, getConfig, getPublicConfig,
     refreshSkills: (options) => skills.load(options),
     clearInput: () => { $("aiInput").value = ""; },
   };
+}
+
+// ---- composer attachment chips ------------------------------------------
+const ATTACH_KIND_LABEL = { csv: "CSV", tsv: "TSV", json: "JSON", annot: "ANNOT", text: "TXT" };
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+function renderComposerAttachments(list) {
+  const wrap = document.getElementById("aiAttachments");
+  if (!wrap) return;
+  const items = Array.isArray(list) ? list : [];
+  wrap.classList.toggle("show", items.length > 0);
+  wrap.innerHTML = "";
+  for (const item of items) {
+    const chip = document.createElement("span");
+    chip.className = `ai-attach-chip ${item.status || "ready"}`;
+    if (item.error) chip.title = item.error;
+    const busy = item.status === "reading" || item.status === "uploading";
+    const kind = ATTACH_KIND_LABEL[item.kind] || (item.status === "error" ? "!" : "•");
+    const meta = item.status === "error" ? "failed"
+      : item.status === "ready" ? formatBytes(item.sizeBytes)
+      : (item.status === "uploading" ? "uploading…" : "reading…");
+    chip.innerHTML = `
+      <span class="ai-attach-kind">${busy ? '<span class="ai-spinner"></span>' : escapeAttachText(kind)}</span>
+      <span class="ai-attach-name">${escapeAttachText(item.name || "file")}</span>
+      <span class="ai-attach-meta">${escapeAttachText(meta)}</span>
+      <button type="button" class="ai-attach-x" data-remove="${escapeAttachText(item.id || item.name || "")}" title="Remove" aria-label="Remove attachment">×</button>`;
+    wrap.appendChild(chip);
+  }
+}
+function appendMessageAttachments(container, list) {
+  const files = Array.isArray(list) ? list.filter((item) => item?.name) : [];
+  if (!files.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "ai-msg-files";
+  for (const item of files) {
+    const chip = document.createElement("span");
+    chip.className = "ai-msg-file";
+    const kind = document.createElement("span");
+    kind.className = "ai-attach-kind";
+    kind.textContent = ATTACH_KIND_LABEL[item.kind] || "FILE";
+    const name = document.createElement("span");
+    name.className = "ai-attach-name";
+    name.textContent = item.name || "file";
+    const meta = document.createElement("span");
+    meta.className = "ai-attach-meta";
+    meta.textContent = formatBytes(item.sizeBytes);
+    chip.append(kind, name, meta);
+    wrap.appendChild(chip);
+  }
+  container.appendChild(wrap);
+}
+function escapeAttachText(value) {
+  return String(value ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
 // ---- tool-card body rendering (module scope) ----------------------------

@@ -488,6 +488,9 @@
 
       <aside class="ai-drawer hidden" id="aiDrawer" aria-label="EEG-Master AI assistant">
         <div class="ai-resizer" id="aiResizer" title="Drag to resize EEG-Master"></div>
+        <div class="ai-drop-hint" id="aiDropHint" aria-hidden="true">
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> Drop file to attach to EEG-Master</span>
+        </div>
         <div class="ai-head">
           <div class="ai-head-title">
             <b>EEG-Master</b>
@@ -544,14 +547,19 @@
         </button>
 
         <div class="ai-composer">
-          <div class="ai-composer-box">
+          <div class="ai-composer-box" id="aiComposerBox">
+            <div class="ai-attachments" id="aiAttachments" aria-live="polite"></div>
             <textarea id="aiInput" rows="3" placeholder="Ask EEG-Master about this data..."></textarea>
             <div class="ai-send-row">
+              <button class="ai-attach-btn" id="aiAttachBtn" type="button" title="Attach a label / annotation / metadata file" aria-label="Attach file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </button>
               <span class="ai-composer-hint" aria-hidden="true"><kbd>⏎</kbd> send · <kbd>⇧⏎</kbd> newline</span>
               <button class="btn ghost ai-stop hidden" id="aiStopBtn">Stop</button>
               <button class="btn accent" id="aiSendBtn">Send</button>
             </div>
           </div>
+          <input type="file" id="aiAttachInput" multiple accept=".csv,.tsv,.tab,.txt,.text,.log,.md,.json,.annot,.annotations,.dat,text/*,application/json" hidden />
         </div>
       </aside>
     </div>

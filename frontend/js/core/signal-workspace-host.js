@@ -3,6 +3,8 @@ import { downloadBlob, downloadText } from "./util.js";
 import { buildSignalImagePlan } from "./signal-image-plan.js";
 
 const DEFAULT_AGENT_IMAGE_LIMITS = { maxAgentImages: 5, maxImageWindowSec: 15 };
+const MAX_AGENT_EVENT_WRITES = 256;
+const ADJACENT_EVENT_GAP_SEC = 0.02;
 
 const FILTER_PRESETS = {
   review: { low: 1, high: 70 }, seizure: { low: 1, high: 40 },
@@ -91,7 +93,85 @@ function agentImageLimits(args = {}) {
   };
 }
 
+function cleanEventLabel(label) {
+  return String(label || "Event").replace(/[<>]/g, "").slice(0, 120) || "Event";
+}
+
+function normalizeEventWrites(events = []) {
+  return (Array.isArray(events) ? events : []).map((item) => {
+    const onset = finite(item?.onsetSec ?? item?.timeSec);
+    if (onset === null) throw new Error("Adding an event requires onsetSec.");
+    const offset = finite(item?.offsetSec);
+    return {
+      ...item,
+      onsetSec: onset,
+      offsetSec: offset !== null && offset > onset ? offset : null,
+      label: cleanEventLabel(item?.label),
+    };
+  }).sort((a, b) => a.onsetSec - b.onsetSec
+    || (a.offsetSec ?? a.onsetSec) - (b.offsetSec ?? b.onsetSec)
+    || String(a.label).localeCompare(String(b.label)));
+}
+
+function mergeAdjacentEventWrites(events = []) {
+  const normalized = normalizeEventWrites(events);
+  const merged = [];
+  for (const event of normalized) {
+    const last = merged[merged.length - 1];
+    const sameLabel = last && String(last.label).trim().toLowerCase() === String(event.label).trim().toLowerCase();
+    const lastEnd = finite(last?.offsetSec);
+    const eventEnd = finite(event.offsetSec);
+    const adjacent = lastEnd !== null && eventEnd !== null && event.onsetSec <= lastEnd + ADJACENT_EVENT_GAP_SEC;
+    if (sameLabel && adjacent) {
+      last.offsetSec = Math.max(lastEnd, eventEnd);
+    } else {
+      merged.push({ ...event });
+    }
+  }
+  return {
+    events: merged,
+    inputCount: normalized.length,
+    outputCount: merged.length,
+  };
+}
+
+function eventLabelKey(label) {
+  return String(label || "").trim().toLowerCase();
+}
+
+function addMergedAIInterval(viewer, onsetSec, offsetSec, label) {
+  const labelKey = eventLabelKey(label);
+  const matches = viewer.events.filter((event) => {
+    const eventEnd = finite(event.offsetSec);
+    return event.type === "interval"
+      && String(event.source || "") === "ai"
+      && eventLabelKey(event.label) === labelKey
+      && eventEnd !== null
+      && eventEnd >= onsetSec - ADJACENT_EVENT_GAP_SEC
+      && event.onsetSec <= offsetSec + ADJACENT_EVENT_GAP_SEC;
+  });
+  if (!matches.length) {
+    return { event: viewer.addInterval(onsetSec, offsetSec, label, "ai"), mergedWithExisting: 0 };
+  }
+  let mergedStart = onsetSec;
+  let mergedEnd = offsetSec;
+  for (const event of matches) {
+    mergedStart = Math.min(mergedStart, finite(event.onsetSec) ?? mergedStart);
+    mergedEnd = Math.max(mergedEnd, finite(event.offsetSec) ?? mergedEnd);
+  }
+  for (const event of matches) viewer.removeEvent(event.id);
+  return {
+    event: viewer.addInterval(mergedStart, mergedEnd, label, "ai"),
+    mergedWithExisting: matches.length,
+  };
+}
+
 export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) {
+  // The active conversation id scopes the ephemeral companion-file store on the
+  // backend. The agent loop sets it before each run; run_python and the
+  // attachment tools tag their requests with it.
+  let activeConversationId = null;
+
   const largeRecordingAnalysis = () => viewer.windowed ? {
     status: "available",
     mode: "indexed-windowed",
@@ -107,15 +187,29 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
     fullOverviewImages: true,
   };
 
-  const state = () => ({
-    ...viewer.buildAIContext(),
-    project: {
+  function projectContext() {
+    const fileContext = viewer.fileContext || {};
+    const currentPath = String(fileContext.relativePath || "");
+    const currentProject = String(fileContext.projectName || "");
+    const currentFileInProject = Boolean(currentPath);
+    const selectedPath = currentFileInProject ? (explorer.state.selectedPath || currentPath) : null;
+    return {
       name: explorer.state.projectName || null,
       source: explorer.state.source || null,
       permission: explorer.state.permission,
-      activePath: explorer.state.activePath || null,
-      selectedPath: explorer.state.selectedPath || null,
-    },
+      currentFileInProject,
+      activePath: currentFileInProject ? currentPath : null,
+      selectedPath,
+      note: currentFileInProject
+        ? "The current recording was opened from the mounted project."
+        : "A project may be mounted in Explorer, but the current recording was opened outside that project.",
+      ...(currentProject ? { currentProjectName: currentProject } : {}),
+    };
+  }
+
+  const state = () => ({
+    ...viewer.buildAIContext(),
+    project: projectContext(),
     capabilities: {
       projectFiles: explorer.state.permission === "granted",
       imageProducer: true,
@@ -196,7 +290,12 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
 
     manageEvents(operation, events = []) {
       const changed = [];
-      for (const item of events.slice(0, 64)) {
+      const prepared = operation === "add"
+        ? mergeAdjacentEventWrites(events)
+        : { events: Array.isArray(events) ? events : [], inputCount: Array.isArray(events) ? events.length : 0, outputCount: Array.isArray(events) ? events.length : 0 };
+      const truncated = prepared.events.length > MAX_AGENT_EVENT_WRITES;
+      let mergedWithExisting = 0;
+      for (const item of prepared.events.slice(0, MAX_AGENT_EVENT_WRITES)) {
         if (operation === "remove") {
           if (!item?.id) throw new Error("Removing an event requires its id.");
           viewer.removeEvent(item.id);
@@ -208,14 +307,23 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
         } else if (operation === "add") {
           const onset = finite(item?.onsetSec ?? item?.timeSec);
           const offset = finite(item?.offsetSec);
-          if (onset === null) throw new Error("Adding an event requires onsetSec.");
-          const label = String(item?.label || "Event").replace(/[<>]/g, "").slice(0, 120) || "Event";
-          changed.push(offset !== null && offset > onset
-            ? viewer.addInterval(onset, offset, label, "ai")
-            : viewer.addEvent({ type: "point", onsetSec: onset, label, source: "ai" }));
+          const label = cleanEventLabel(item?.label);
+          if (offset !== null && offset > onset) {
+            const merged = addMergedAIInterval(viewer, onset, offset, label);
+            mergedWithExisting += merged.mergedWithExisting;
+            changed.push(merged.event);
+          } else {
+            changed.push(viewer.addEvent({ type: "point", onsetSec: onset, label, source: "ai" }));
+          }
         } else throw new Error(`Unsupported event operation: ${operation}`);
       }
-      return { operation, changed, eventCount: viewer.events.length };
+      return {
+        operation, changed, eventCount: viewer.events.length,
+        inputEventCount: prepared.inputCount,
+        writtenEventCount: changed.length,
+        truncated,
+        ...(operation === "add" ? { mergedAdjacentEvents: { input: prepared.inputCount, output: prepared.outputCount, mergedWithExisting } } : {}),
+      };
     },
   };
 
@@ -248,18 +356,17 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
       ? value
       : String(value || "").split(/[\n,]+/))
       .map((item) => String(item).trim()).filter(Boolean).slice(0, limit);
-    return {
-      name: String(skill.name || "").trim(),
-      title: String(skill.title || "").trim(),
-      description: String(skill.description || "").trim(),
-      category: String(skill.category || "workflow").trim(),
-      version: String(skill.version || "1.0").trim(),
-      defaultEnabled: Boolean(skill.defaultEnabled),
-      triggers: list(skill.triggers),
-      tags: list(skill.tags),
-      allowedTools: list(skill.allowedTools),
-      markdown: String(skill.body ?? skill.markdown ?? "").trim(),
-    };
+    const payload = {};
+    if ("name" in skill) payload.name = String(skill.name || "").trim();
+    for (const key of ["title", "description", "category", "version"]) {
+      if (key in skill) payload[key] = String(skill[key] || "").trim();
+    }
+    if ("defaultEnabled" in skill) payload.defaultEnabled = Boolean(skill.defaultEnabled);
+    if ("triggers" in skill) payload.triggers = list(skill.triggers);
+    if ("tags" in skill) payload.tags = list(skill.tags);
+    if ("allowedTools" in skill) payload.allowedTools = list(skill.allowedTools);
+    if ("body" in skill || "markdown" in skill) payload.markdown = String(skill.body ?? skill.markdown ?? "").trim();
+    return payload;
   }
 
   const skills = {
@@ -560,8 +667,66 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
     },
   };
 
+  // Conversation-scoped companion files (label CSV/TXT/JSON). The store lives on
+  // the backend, keyed by the active conversation id; here we only carry
+  // lightweight summaries and forward read/grep/import requests.
+  const attachments = {
+    setConversation(id) { activeConversationId = id ? String(id) : null; },
+    conversationId() { return activeConversationId; },
+    async upload({ conversationId, id, name, text, source = "attach" }, signalAbort) {
+      const targetConversationId = conversationId ? String(conversationId) : activeConversationId;
+      if (!targetConversationId) throw new Error("No active conversation for the attachment.");
+      const body = { conversationId: targetConversationId, name, text, source };
+      if (id) body.id = String(id);
+      const response = await fetch("/api/ai/attachments", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: signalAbort,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Attachment upload failed.");
+      return payload.attachment || null;
+    },
+    async list(signalAbort) {
+      if (!activeConversationId) return [];
+      const response = await fetch(`/api/ai/attachments?conversationId=${encodeURIComponent(activeConversationId)}`, { signal: signalAbort });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Could not list attachments.");
+      return Array.isArray(payload.attachments) ? payload.attachments : [];
+    },
+    async read({ id, offset, limit }, signalAbort) {
+      if (!activeConversationId) throw new Error("No active conversation for the attachment.");
+      const response = await fetch("/api/ai/attachments/read", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: activeConversationId, id, offset, limit }),
+        signal: signalAbort,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Could not read attachment.");
+      return payload;
+    },
+    async grep({ id, pattern, mode, ignoreCase, maxMatches }, signalAbort) {
+      if (!activeConversationId) throw new Error("No active conversation for the attachment.");
+      const response = await fetch("/api/ai/attachments/grep", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: activeConversationId, id, pattern, mode, ignoreCase, maxMatches }),
+        signal: signalAbort,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Could not search attachment.");
+      return payload;
+    },
+    async remove(id, signalAbort) {
+      if (!activeConversationId || !id) return false;
+      const response = await fetch(`/api/ai/attachments/${encodeURIComponent(id)}?conversationId=${encodeURIComponent(activeConversationId)}`, {
+        method: "DELETE", signal: signalAbort,
+      });
+      return response.ok;
+    },
+  };
+
   return {
-    signal, workspace, project, artifacts, skills,
+    signal, workspace, project, artifacts, skills, attachments,
     getWorkspaceConfiguration(agentConfig = null) {
       const ctx = state();
       const view = ctx.view || {};
@@ -603,9 +768,9 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
       return response.text();
     },
     async runPython(code, signalAbort, window) {
-      const token = viewer.header?.dataToken || viewer.windowToken;
+      const token = viewer.windowed ? viewer.windowToken : viewer.header?.dataToken;
       if (!token) throw new Error("No dataset token is available. Reload the EEG file, then retry.");
-      const body = { code, dataToken: token, workspace: state() };
+      const body = { code, dataToken: token, workspace: state(), conversationId: activeConversationId };
       if (window && Number.isFinite(window.startSec) && Number.isFinite(window.endSec)) {
         body.startSec = window.startSec; body.endSec = window.endSec;
       }

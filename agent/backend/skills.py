@@ -23,6 +23,7 @@ USER_SKILLS_DIR = Path(os.environ.get(
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$")
 MAX_SKILL_MARKDOWN_CHARS = 120_000
 MAX_FIELD_CHARS = 2_000
+_MISSING = object()
 
 
 class SkillError(ValueError):
@@ -98,6 +99,15 @@ def _validate_name(name: str) -> str:
     clean = str(name or "").strip()
     if not _NAME_RE.match(clean):
         raise KeyError(clean)
+    return clean
+
+
+def _validate_write_name(name: str) -> str:
+    clean = str(name or "").strip()
+    if not clean:
+        raise SkillError("Skill name is required.")
+    if not _NAME_RE.match(clean):
+        raise SkillError("Skill name is invalid.")
     return clean
 
 
@@ -184,10 +194,19 @@ def get_skill(name: str) -> dict[str, Any]:
     return {**_manifest(skill), "markdown": skill["body"], "sourceText": skill["sourceText"]}
 
 
-def _clean_field(value, fallback: str = "", limit: int = 180) -> str:
+def _first_present(payload: dict[str, Any], *keys: str):
+    for key in keys:
+        if key in payload:
+            return payload[key]
+    return _MISSING
+
+
+def _clean_field(value, fallback: str = "", limit: int = 180, field: str = "Field", required: bool = False) -> str:
     text = re.sub(r"\s+", " ", str(value or fallback)).strip()
+    if required and not text:
+        raise SkillError(f"{field} is required.")
     if len(text) > limit:
-        raise SkillError(f"Field is too long; max {limit} characters.")
+        raise SkillError(f"{field} is too long; max {limit} characters.")
     return text
 
 
@@ -197,21 +216,47 @@ def _yaml_list(items: list[str]) -> str:
     return "\n" + "\n".join(f"  - {item}" for item in items)
 
 
-def _compose_skill_text(name: str, payload: dict[str, Any]) -> str:
-    body = str(payload.get("markdown") or payload.get("body") or "").strip()
+def _compose_skill_text(name: str, payload: dict[str, Any], *, base: dict[str, Any] | None = None,
+                        require_description: bool = False) -> str:
+    body_value = _first_present(payload, "markdown", "body")
+    body = str(base.get("body") if body_value is _MISSING and base else body_value if body_value is not _MISSING else "").strip()
     if not body:
         raise SkillError("Skill Markdown body is required.")
     if len(body) > MAX_SKILL_MARKDOWN_CHARS:
         raise SkillError(f"Skill Markdown is too long; max {MAX_SKILL_MARKDOWN_CHARS} characters.")
 
-    title = _clean_field(payload.get("title"), name, 180)
-    description = _clean_field(payload.get("description"), "", MAX_FIELD_CHARS)
-    version = _clean_field(payload.get("version"), "1.0", 80)
-    category = _clean_field(payload.get("category"), "workflow", 80)
-    default_enabled = bool(payload.get("defaultEnabled", payload.get("default_enabled", False)))
-    triggers = _string_list(payload.get("triggers"))
-    tags = _string_list(payload.get("tags"))
-    allowed_tools = _string_list(payload.get("allowedTools", payload.get("allowed_tools")))
+    title_value = _first_present(payload, "title")
+    description_value = _first_present(payload, "description")
+    version_value = _first_present(payload, "version")
+    category_value = _first_present(payload, "category")
+    default_enabled_value = _first_present(payload, "defaultEnabled", "default_enabled")
+    triggers_value = _first_present(payload, "triggers")
+    tags_value = _first_present(payload, "tags")
+    allowed_tools_value = _first_present(payload, "allowedTools", "allowed_tools")
+
+    title = _clean_field(
+        base.get("title") if title_value is _MISSING and base else title_value if title_value is not _MISSING else name,
+        name, 180, "Skill title",
+    )
+    description = _clean_field(
+        base.get("description") if description_value is _MISSING and base else description_value if description_value is not _MISSING else "",
+        "", MAX_FIELD_CHARS, "Skill description", require_description,
+    )
+    version = _clean_field(
+        base.get("version") if version_value is _MISSING and base else version_value if version_value is not _MISSING else "1.0",
+        "1.0", 80, "Skill version",
+    )
+    category = _clean_field(
+        base.get("category") if category_value is _MISSING and base else category_value if category_value is not _MISSING else "workflow",
+        "workflow", 80, "Skill category",
+    )
+    default_enabled = bool(
+        base.get("defaultEnabled") if default_enabled_value is _MISSING and base else
+        default_enabled_value if default_enabled_value is not _MISSING else False
+    )
+    triggers = _string_list(base.get("triggers") if triggers_value is _MISSING and base else triggers_value)
+    tags = _string_list(base.get("tags") if tags_value is _MISSING and base else tags_value)
+    allowed_tools = _string_list(base.get("allowedTools") if allowed_tools_value is _MISSING and base else allowed_tools_value)
 
     frontmatter = [
         "---",
@@ -231,11 +276,11 @@ def _compose_skill_text(name: str, payload: dict[str, Any]) -> str:
 
 
 def create_skill(payload: dict[str, Any]) -> dict[str, Any]:
-    name = _validate_name(str(payload.get("name") or ""))
+    name = _validate_write_name(str(payload.get("name") or ""))
     path = _skill_path(USER_SKILLS_DIR, name)
     if path.exists():
         raise FileExistsError(name)
-    text = _compose_skill_text(name, payload)
+    text = _compose_skill_text(name, payload, require_description=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name("SKILL.md.tmp")
     tmp.write_text(text, encoding="utf-8")
@@ -244,11 +289,17 @@ def create_skill(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_skill(name: str, payload: dict[str, Any]) -> dict[str, Any]:
-    clean = _validate_name(name)
+    clean = _validate_write_name(name)
     path = _skill_path(USER_SKILLS_DIR, clean)
-    if not path.exists():
-        raise KeyError(clean)
-    text = _compose_skill_text(clean, {**payload, "name": clean})
+    try:
+        base = _load_skill_from(USER_SKILLS_DIR, clean, "user")
+    except KeyError:
+        try:
+            base = _load_skill_from(BUNDLED_SKILLS_DIR, clean, "bundled")
+        except KeyError:
+            raise KeyError(clean) from None
+    text = _compose_skill_text(clean, {**payload, "name": clean}, base=base)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name("SKILL.md.tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)

@@ -47,6 +47,27 @@ function metaLine(conv, meta, sep) {
   ].filter(Boolean).join(sep);
 }
 
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function attachmentsHTML(files) {
+  const items = Array.isArray(files) ? files.filter((file) => file?.name) : [];
+  if (!items.length) return "";
+  return `<div class="msg-files">${items.map((file) =>
+    `<span><b>${escapeHtml(String(file.kind || "file").toUpperCase())}</b>${escapeHtml(file.name)} <em>${escapeHtml(formatBytes(file.sizeBytes))}</em></span>`
+  ).join("")}</div>`;
+}
+
+function attachmentsMarkdown(files) {
+  const items = Array.isArray(files) ? files.filter((file) => file?.name) : [];
+  if (!items.length) return [];
+  return ["", ...items.map((file) => `- attached: ${file.name} (${String(file.kind || "file").toUpperCase()}, ${formatBytes(file.sizeBytes)})`)];
+}
+
 // ---- JSON: complete machine-readable record -----------------------------
 function buildJSON(conv, meta) {
   return safeJSON({
@@ -67,7 +88,7 @@ function toolStatus(outcome) { return outcome && outcome.ok === false ? "error" 
 function logItemHTML(item) {
   if (!item || !item.kind) return "";
   if (item.kind === "user") {
-    return `<div class="msg user"><div class="who">You</div><div class="md">${renderMarkdown(item.text || "")}</div></div>`;
+    return `<div class="msg user"><div class="who">You</div><div class="md">${renderMarkdown(item.text || "")}</div>${attachmentsHTML(item.attachments)}</div>`;
   }
   if (item.kind === "assistant") {
     if (!item.text || !item.text.trim()) return "";
@@ -164,7 +185,7 @@ function buildMarkdown(conv, meta) {
   if (m) lines.push("", `*${m}*`);
   lines.push("", "---", "");
   for (const item of conv.log || []) {
-    if (item.kind === "user") lines.push("### 🧑 You", "", item.text || "", "");
+    if (item.kind === "user") lines.push("### 🧑 You", "", item.text || "", ...attachmentsMarkdown(item.attachments), "");
     else if (item.kind === "assistant") { if (item.text && item.text.trim()) lines.push("### 🤖 EEG-Master", "", item.text, ""); }
     else if (item.kind === "note") lines.push(`> ${item.text || ""}`, "");
     else if (item.kind === "error") lines.push(`> ⚠️ ${item.text || ""}`, "");
@@ -259,6 +280,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font
 .msg .who{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px;font-weight:600;}
 .msg.user{align-self:flex-end;max-width:82%;background:var(--accent);color:#fff;border-radius:14px 14px 4px 14px;padding:11px 14px;}
 .msg.user .who{color:rgba(255,255,255,.8);}
+.msg-files{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin-top:8px;}
+.msg-files span{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 7px;border:1px solid rgba(255,255,255,.42);border-radius:8px;background:rgba(255,255,255,.18);font-size:11px;line-height:1;}
+.msg-files b{font:600 8.5px var(--mono);letter-spacing:.06em;}
+.msg-files em{font:9.5px var(--mono);font-style:normal;color:rgba(255,255,255,.72);}
 .msg.assistant{align-self:flex-start;max-width:100%;}
 .msg.error{align-self:flex-start;max-width:100%;background:#fff7f3;border:1px solid #edd1c6;border-radius:12px;padding:11px 14px;color:var(--accent-ink);}
 .note{align-self:center;font-size:12px;color:var(--ink-soft);background:var(--rail);border:1px solid var(--line);border-radius:100px;padding:5px 14px;}

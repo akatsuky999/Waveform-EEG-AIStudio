@@ -10,9 +10,19 @@ const BAND_META = [
 ];
 // Per-skill body cap when reading every skill at once via list_agent_skills.
 const SKILL_BODY_CHARS = 6000;
+// Agent-authored skills should be compact priors/workflows, not full reports.
+const SKILL_WRITE_BODY_CHARS = 24000;
+const SKILL_WRITE_ARG_ERROR = "工具参数损坏或过长，请用更短 skill body 重试。";
 
 function round(number) { return Math.round(number * 100) / 100; }
 function ok(name, result, extra = {}) { return { name, ok: true, result, ...extra }; }
+function toolErrorPayload(name, error, extra = {}) {
+  const payload = { name: name || "unknown", ok: false, error: error.message || String(error), ...extra };
+  for (const key of ["errorCode", "workflowHint", "expired", "retryable"]) {
+    if (error?.[key] != null && payload[key] == null) payload[key] = error[key];
+  }
+  return payload;
+}
 function skillSummary(skill = {}) {
   return {
     name: skill.name, title: skill.title, description: skill.description,
@@ -20,6 +30,31 @@ function skillSummary(skill = {}) {
     triggers: Array.isArray(skill.triggers) ? skill.triggers.slice(0, 12) : [],
     note: "Skill saved to disk. It is now available via list_agent_skills / read_agent_skill. A skill is prior context only and grants no tool permissions.",
   };
+}
+function skillWriteInputError(message = SKILL_WRITE_ARG_ERROR) {
+  const error = new Error(message);
+  error.errorCode = "SKILL_WRITE_INVALID_ARGUMENTS";
+  error.workflowHint = "把完整报告留在聊天里；skill 只保存可复用核心、触发条件、证据流程、迁移限制和验证标准。";
+  error.retryable = true;
+  return error;
+}
+function skillBodyArg(args = {}) {
+  if (typeof args.body === "string") return args.body;
+  if (typeof args.markdown === "string") return args.markdown;
+  return "";
+}
+function validateSkillWriteArgs(toolName, args = {}) {
+  if (!args || typeof args !== "object" || typeof args.__raw === "string") {
+    throw skillWriteInputError();
+  }
+  if (!String(args.name || "").trim()) throw skillWriteInputError();
+  const body = skillBodyArg(args).trim();
+  if (!body) throw skillWriteInputError();
+  if (body.length > SKILL_WRITE_BODY_CHARS) throw skillWriteInputError();
+  if (toolName === "create_agent_skill" && !String(args.description || "").trim()) {
+    throw skillWriteInputError();
+  }
+  return args;
 }
 function windowedWorkflowHint(op = "search") {
   return op === "aggregate"
@@ -102,14 +137,19 @@ export async function runToolCall(host, call, signal, policy = {}) {
     }
     if (name === "create_agent_skill") {
       requireAction(policy, "skillWrite");
+      validateSkillWriteArgs(name, args);
       const saved = await host.skills.create(args, signal);
       return ok(name, { saved: true, operation: "create", skill: skillSummary(saved) });
     }
     if (name === "update_agent_skill") {
       requireAction(policy, "skillWrite");
+      validateSkillWriteArgs(name, args);
       const saved = await host.skills.update(args.name, args, signal);
       return ok(name, { saved: true, operation: "update", skill: skillSummary(saved) });
     }
+    if (name === "list_context_files") return ok(name, await listContextFilesTool(host, signal));
+    if (name === "read_context_file") return ok(name, await readContextFileTool(host, args, signal));
+    if (name === "grep_context_file") return ok(name, await grepContextFileTool(host, args, signal));
     if (name === "list_signal_sources") return ok(name, await host.project.listSources());
     if (name === "open_signal_source") {
       requireAction(policy, "fileSwitch");
@@ -139,7 +179,7 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (name === "configure_signal_processing") return ok(name, host.workspace.configureProcessing(args));
     if (name === "manage_signal_events") {
       requireAction(policy, "annotation");
-      return ok(name, host.workspace.manageEvents(args.operation, args.events));
+      return ok(name, compactEventWriteResult(host.workspace.manageEvents(args.operation, args.events)));
     }
     if (name === "render_signal_images") {
       const rendered = await host.artifacts.renderImages({ ...args, __agentLimits: host.getAgentConfiguration?.() }, signal);
@@ -151,8 +191,25 @@ export async function runToolCall(host, call, signal, policy = {}) {
     }
     throw new Error(`Unsupported tool: ${requestedName || "empty"}`);
   } catch (error) {
-    return { name: name || requestedName || "unknown", ok: false, error: error.message || String(error) };
+    return toolErrorPayload(name || requestedName || "unknown", error);
   }
+}
+
+function compactEventWriteResult(result = {}) {
+  const changed = Array.isArray(result.changed) ? result.changed : [];
+  if (changed.length <= 24) return result;
+  const preview = [...changed.slice(0, 8), ...changed.slice(-4)].map((event) => ({
+    id: event.id, type: event.type, label: event.label,
+    onsetSec: event.onsetSec, offsetSec: event.offsetSec ?? null,
+    removed: event.removed || undefined,
+  }));
+  return {
+    ...result,
+    changed: preview,
+    changedPreviewCount: preview.length,
+    changedOmitted: changed.length - preview.length,
+    note: "Bulk event result compacted for the model context; the workspace contains the full applied event set.",
+  };
 }
 function normalizeLegacyArgs(name, args) {
   if (name === "add_marker") {
@@ -178,6 +235,9 @@ export function toolTitle(name, args = {}) {
     update_agent_skill: `Update skill · ${args.name || "unknown"}`,
     list_signal_sources: "List signal sources",
     open_signal_source: `Open ${args.path || args.source || "signal source"}`,
+    list_context_files: "List attached files",
+    read_context_file: `Read file · ${args.file || "attachment"}`,
+    grep_context_file: `Search file · ${args.file || "attachment"}`,
     inspect_channel: `Inspect channel ${args.channel ?? args.label ?? args.index ?? ""}`.trim(),
     rank_channels: `Rank channels · ${args.metric || "artifactScore"}`,
     detect_artifact_candidates: "Detect artifact candidates",
@@ -260,6 +320,54 @@ async function windowedRank(host, args, signal) {
   }));
 }
 
+// ---- companion-file (attachment) tools ----------------------------------
+async function listContextFilesTool(host, signal) {
+  const files = await host.attachments.list(signal);
+  return {
+    count: files.length,
+    files,
+    note: files.length
+      ? "Conversation-scoped companion files restored into the backend tool cache. Use read_context_file / grep_context_file only for bounded inspection. For full-file parsing/import, call run_python and read the file from the `attachments` global; do not stream the whole file through chat."
+      : "No companion files are attached to this conversation. Ask the user to attach a label/annotation file (drag onto the chat or use the attach button).",
+  };
+}
+
+async function resolveAttachmentId(host, ref, signal) {
+  const wanted = String(ref || "").trim();
+  if (!wanted) throw new Error("file (attachment id or name) is required.");
+  const files = await host.attachments.list(signal);
+  if (!files.length) {
+    const error = new Error("No companion files are attached to this conversation.");
+    error.errorCode = "CONTEXT_FILE_UNAVAILABLE";
+    error.expired = true;
+    error.workflowHint = "The companion-file cache is unavailable. Stop and ask the user to re-attach the file; do not reconstruct labels from partial previews.";
+    throw error;
+  }
+  const byId = files.find((file) => file.id === wanted);
+  if (byId) return byId.id;
+  const lower = wanted.toLowerCase();
+  const byName = files.find((file) => String(file.name || "").toLowerCase() === lower)
+    || files.find((file) => String(file.name || "").toLowerCase().includes(lower));
+  if (byName) return byName.id;
+  const error = new Error(`No attached file matches "${wanted}". Call list_context_files to see available files.`);
+  error.errorCode = "CONTEXT_FILE_NOT_FOUND";
+  error.workflowHint = "Use list_context_files and only operate on files that are actually available in this conversation.";
+  throw error;
+}
+
+async function readContextFileTool(host, args, signal) {
+  const id = await resolveAttachmentId(host, args.file, signal);
+  return host.attachments.read({ id, offset: args.offset, limit: args.limit }, signal);
+}
+
+async function grepContextFileTool(host, args, signal) {
+  const id = await resolveAttachmentId(host, args.file, signal);
+  return host.attachments.grep({
+    id, pattern: args.pattern, mode: args.mode,
+    ignoreCase: args.ignoreCase, maxMatches: args.maxMatches,
+  }, signal);
+}
+
 async function runPythonTool(host, args, signal) {
   const code = String(args.code || "");
   if (!code.trim()) return { name: "run_python", ok: false, error: "code is required", code };
@@ -303,7 +411,16 @@ async function runPythonTool(host, args, signal) {
     const attachments = figure ? [{ kind: "image", dataUrl: figure, label: "Python analysis figure" }] : [];
     return { name: "run_python", ok: !!data.ok, result, attachments, code };
   } catch (error) {
-    return { name: "run_python", ok: false, error: error.message || String(error), code };
+    const message = error.message || String(error);
+    const tokenExpired = /No cached dataset|No windowed dataset|No dataset token|Reload the EEG file/i.test(message);
+    return toolErrorPayload("run_python", error, {
+      code,
+      ...(tokenExpired ? {
+        errorCode: "DATASET_TOKEN_EXPIRED",
+        workflowHint: "The EEG data cache is unavailable. Stop signal-dependent Python analysis and ask the user to reopen/reload the EEG recording; do not keep retrying code variants.",
+        retryable: false,
+      } : {}),
+    });
   }
 }
 

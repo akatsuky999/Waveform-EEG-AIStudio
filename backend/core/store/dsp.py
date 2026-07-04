@@ -71,8 +71,8 @@ def apply_filter(block: np.ndarray, fs: float, low: float, high: float, notch: i
     if n < 2:
         return block
     pad = min(n, max(1, int(round(fs))))
-    left = block[:, pad - 1::-1]                 # reflect block[:, :pad]
-    right = block[:, n - 1:n - 1 - pad:-1]       # reflect block[:, n-pad:]
+    left = block[:, :pad][:, ::-1]               # reflect of the first `pad` columns
+    right = block[:, n - pad:][:, ::-1]          # reflect of the last  `pad` columns
     padded = np.concatenate([left, block, right], axis=1)
     lp = padded.shape[1]                          # 2*pad + n
     size = _next_pow2(lp)

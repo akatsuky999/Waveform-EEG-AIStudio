@@ -553,6 +553,8 @@ export class WaveformViewer {
     }
     this._sampleOffset = 0;                          // agg geometry already uses absolute startSample
     this.tile = tile;
+    this.dispChannels = [];                          // tile path renders/reads from tiles, not per-sample arrays
+    this.nDisp = this.windowMeta?.nSamples ?? this.nDisp; // absolute-index bound spans the whole recording
     this._buildLinesFromTile();
     this._emitSelection();
   }
@@ -1143,6 +1145,7 @@ export class WaveformViewer {
       unit: this.unit,
       gainMult: this.gainMult,
       filterOpts: this.filterOpts,
+      fileContext: this.fileContext,
     });
   }
 
@@ -1713,28 +1716,34 @@ export class WaveformViewer {
     const row = Math.round(-this.screenToWorldY(y));
     const ch = this.visibleChannels[row];
     const i = Math.round(this.screenToWorldX(x));          // absolute sample index
-    const ri = this._procMode ? i - (this._sampleOffset || 0) : i; // index into dispChannels
+    // A deep-zoom client-proc window keeps per-sample dispChannels; a wide server
+    // envelope tile does not — read that live from the tile via _tileValueAt.
+    const clientProc = this._procMode && this.dispChannels.length > 0;
+    const ri = clientProc ? i - (this._sampleOffset || 0) : i; // index into dispChannels
     let info = null;
-    const inRange = this._procMode
-      ? (ri >= 0 && ri < this.nDisp)
-      : (i >= 0 && i < this.nDisp);
-    if (ch !== undefined && inRange) {
-      const value = this._procMode ? this.dispChannels[ch]?.[ri]
-        : this.windowed ? this._tileValueAt(ch, i) : this.dispChannels[ch]?.[i];
-      if (value !== null && value !== undefined) {
-        info = {
-          x, y,
-          label: this.channelMeta[ch].label,
-          color: this.channelColor[ch],
-          time: i / this.fs,
-          value,
-          unit: this.unit,
-          freq: (this.windowed && !this._procMode) ? NaN : this.channelFreqs[ch],
-        };
-        const by = this.worldToScreenY(-row);
-        ctx.fillStyle = info.color;
-        ctx.beginPath(); ctx.arc(x, by, 3.2, 0, Math.PI * 2); ctx.fill();
+    let value;
+    if (ch !== undefined) {
+      if (clientProc) {
+        if (ri >= 0 && ri < this.nDisp) value = this.dispChannels[ch]?.[ri];
+      } else if (this.windowed) {
+        value = this._tileValueAt(ch, i);              // self-bounding to the tile's range
+      } else if (i >= 0 && i < this.nDisp) {
+        value = this.dispChannels[ch]?.[i];
       }
+    }
+    if (value !== null && value !== undefined) {
+      info = {
+        x, y,
+        label: this.channelMeta[ch].label,
+        color: this.channelColor[ch],
+        time: i / this.fs,
+        value,
+        unit: this.unit,
+        freq: (this.windowed && !clientProc) ? NaN : this.channelFreqs[ch],
+      };
+      const by = this.worldToScreenY(-row);
+      ctx.fillStyle = info.color;
+      ctx.beginPath(); ctx.arc(x, by, 3.2, 0, Math.PI * 2); ctx.fill();
     }
     if (this.onReadout) this.onReadout(info);
   }

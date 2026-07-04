@@ -66,7 +66,10 @@ export function buildWindowedAgentContext({
   unit = "",
   gainMult = 1,
   filterOpts = {},
+  fileContext = {},
 } = {}) {
+  const projectName = String(fileContext?.projectName || "");
+  const relativePath = String(fileContext?.relativePath || "");
   return {
     loaded: true,
     windowed: true,
@@ -94,6 +97,8 @@ export function buildWindowedAgentContext({
     file: {
       name: windowMeta.fileName || "",
       format: windowMeta.kind || "h5",
+      projectName: projectName || null,
+      relativePath: relativePath || null,
       samplingRateHz: roundN(fs, 4),
       durationSec: roundN(duration, 4),
       sourceChannels: windowMeta.nChannels,

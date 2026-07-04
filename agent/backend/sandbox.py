@@ -28,6 +28,7 @@ import numpy as np
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from . import attachments as attachment_store
 from .datastore import get_dataset
 
 # Large recordings live in the out-of-core windowed store; run_python reads only a
@@ -82,7 +83,8 @@ def _clean_env(workdir: str) -> dict:
 
 def _run_worker(code: str, dataset: dict, workspace: dict | None = None,
                 window_start_sec: float = 0.0,
-                window_end_sec: float | None = None) -> dict:
+                window_end_sec: float | None = None,
+                attachments: list | None = None) -> dict:
     """Blocking: set up a work dir, run the worker, collect its result."""
     with tempfile.TemporaryDirectory(prefix="eeg-sandbox-") as workdir:
         np.save(os.path.join(workdir, "_data.npy"), np.ascontiguousarray(dataset["array"], dtype=np.float32))
@@ -93,6 +95,7 @@ def _run_worker(code: str, dataset: dict, workspace: dict | None = None,
             "workspace": workspace if isinstance(workspace, dict) else {},
             "window_start_sec": float(window_start_sec),
             "window_end_sec": None if window_end_sec is None else float(window_end_sec),
+            "attachments": attachments if isinstance(attachments, list) else [],
             "limits": {"cpuSeconds": CPU_SECONDS, "addressBytes": ADDRESS_BYTES},
         }
         with open(os.path.join(workdir, "_meta.json"), "w", encoding="utf-8") as handle:
@@ -171,7 +174,11 @@ async def ai_execute(request: Request) -> Response:
         return _json_error("code is too long for the sandbox.", 400)
 
     token = str(data.get("dataToken") or "").strip()
+    conversation_id = str(data.get("conversationId") or "").strip()
     workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
+    # Companion label/metadata files the user attached to this conversation are
+    # injected as the `attachments` global so model code can align them to data/fs.
+    sandbox_attachments = attachment_store.attachments_for_sandbox(conversation_id) if conversation_id else []
     dataset = get_dataset(token)
     window_start_sec = 0.0
     window_end_sec = None
@@ -203,6 +210,7 @@ async def ai_execute(request: Request) -> Response:
         )
 
     result = await asyncio.to_thread(
-        _run_worker, code, dataset, workspace, window_start_sec, window_end_sec
+        _run_worker, code, dataset, workspace, window_start_sec, window_end_sec,
+        sandbox_attachments,
     )
     return JSONResponse(result)

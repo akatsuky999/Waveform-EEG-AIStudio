@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from . import attachments as attachment_store
 from .proxy import ai_chat, ai_models
 from .sandbox import ai_execute
 from .skills import SkillError, create_skill, delete_skill, get_skill, list_skills, update_skill
@@ -84,6 +85,81 @@ async def agent_skill_delete(request):
         return JSONResponse({"error": "Editable user skill not found."}, status_code=404)
 
 
+# ---- companion-file attachments (conversation-scoped backend cache) ----
+async def attachment_create(request):
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "Expected a JSON body."}, status_code=400)
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "Expected a JSON object."}, status_code=400)
+    conversation_id = str(payload.get("conversationId") or "").strip()
+    attachment_id = str(payload.get("id") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    text = payload.get("text")
+    source = str(payload.get("source") or "attach").strip() or "attach"
+    if not isinstance(text, str):
+        return JSONResponse({"error": "text (decoded file content) is required."}, status_code=400)
+    try:
+        summary = attachment_store.put_attachment(
+            conversation_id, name, text, source=source,
+            attachment_id=attachment_id or None,
+        )
+        return JSONResponse({"attachment": summary}, status_code=201)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+async def attachment_list(request):
+    conversation_id = request.query_params.get("conversationId", "")
+    return JSONResponse({"attachments": attachment_store.list_attachments(conversation_id)})
+
+
+async def attachment_delete(request):
+    conversation_id = request.query_params.get("conversationId", "")
+    attachment_id = request.path_params.get("id", "")
+    removed = attachment_store.drop_attachment(conversation_id, attachment_id)
+    return JSONResponse({"deleted": removed}, status_code=200 if removed else 404)
+
+
+async def attachment_read(request):
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "Expected a JSON body."}, status_code=400)
+    try:
+        result = attachment_store.read_attachment(
+            str(payload.get("conversationId") or ""),
+            str(payload.get("id") or ""),
+            offset=payload.get("offset", 1),
+            limit=payload.get("limit"),
+        )
+        return JSONResponse(result)
+    except KeyError:
+        return JSONResponse({"error": "Attachment not found (it may have expired — re-attach it)."}, status_code=404)
+
+
+async def attachment_grep(request):
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "Expected a JSON body."}, status_code=400)
+    try:
+        result = attachment_store.grep_attachment(
+            str(payload.get("conversationId") or ""),
+            str(payload.get("id") or ""),
+            str(payload.get("pattern") or ""),
+            mode=str(payload.get("mode") or "content"),
+            ignore_case=bool(payload.get("ignoreCase", True)),
+            max_matches=payload.get("maxMatches"),
+        )
+        return JSONResponse(result)
+    except KeyError:
+        return JSONResponse({"error": "Attachment not found (it may have expired — re-attach it)."}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
 def agent_routes() -> list:
     """Routes contributed by the EEG-Master plugin.
 
@@ -95,6 +171,10 @@ def agent_routes() -> list:
     - GET  /api/ai/skills/{name}   one EEG skill body
     - POST /api/ai/skills   create a local user skill
     - PUT/DELETE /api/ai/skills/{name}   update/delete a local user skill
+    - GET/POST /api/ai/attachments   list / add conversation-scoped companion files
+    - POST /api/ai/attachments/read   cat -n slice of one attachment
+    - POST /api/ai/attachments/grep   ripgrep-lite over one attachment
+    - DELETE /api/ai/attachments/{id}   drop one attachment
     - /agent/*              the agent's web bundle (JS/CSS), imported by the shell
     """
     return [
@@ -107,5 +187,10 @@ def agent_routes() -> list:
         Route("/api/ai/skills/{name}", agent_skill, methods=["GET"]),
         Route("/api/ai/skills/{name}", agent_skill_update, methods=["PUT"]),
         Route("/api/ai/skills/{name}", agent_skill_delete, methods=["DELETE"]),
+        Route("/api/ai/attachments", attachment_list, methods=["GET"]),
+        Route("/api/ai/attachments", attachment_create, methods=["POST"]),
+        Route("/api/ai/attachments/read", attachment_read, methods=["POST"]),
+        Route("/api/ai/attachments/grep", attachment_grep, methods=["POST"]),
+        Route("/api/ai/attachments/{id}", attachment_delete, methods=["DELETE"]),
         Mount("/agent", app=NoCacheStatic(directory=str(WEB_DIR)), name="agent-web"),
     ]

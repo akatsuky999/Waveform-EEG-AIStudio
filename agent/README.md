@@ -89,10 +89,11 @@ recording** the user is viewing without shipping samples back.
 
 Inside the worker the code has `data` (float32 `[n_channels, n_samples]`, the raw
 decoded recording), `fs`, `labels`, `groups`, local `t`, absolute `startSec`,
-`endSec`, `durationSec`, `t_abs`, `find_channel(ref)`, plus `numpy`/`scipy`, plus
-current metadata in `workspace`. It can `print(...)`, fill `result`, append to
-`event_candidates` (legacy `markers` is an alias; neither is applied to the
-viewer), and draw a matplotlib figure (returned as a PNG).
+`endSec`, `durationSec`, `t_abs`, `find_channel(ref)`, `parse_clock_seconds(...)`
+(`clock_to_seconds` alias), plus `numpy`/`scipy`, plus current metadata in
+`workspace`. It can `print(...)`, fill `result`, append to `event_candidates`
+(legacy `markers` is an alias; neither is applied to the viewer), and draw a
+matplotlib figure (returned as a PNG).
 
 **Isolation (best-effort, honest).** The code runs in a **separate subprocess**
 with a clean environment (no inherited environment-variable secrets), a

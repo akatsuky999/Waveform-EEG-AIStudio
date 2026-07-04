@@ -8,17 +8,25 @@ best-effort backstop; the real guardrail is the parent's wall-clock timeout.
 
 Work directory contract (all paths relative to argv[1]):
     _data.npy   float32 array, shape (n_channels, n_samples)
-    _meta.json  {fs, labels, groups, limits:{cpuSeconds, addressBytes}}
+    _meta.json  {fs, labels, groups, attachments, limits:{cpuSeconds, addressBytes}}
     _code.py    the user code to exec
     -> _out.json  {ok, error, result, eventCandidates}
     -> _fig.png   optional, only if the code produced a matplotlib figure
+
+Companion files the user attached to the conversation arrive in
+``meta["attachments"]`` and are exposed to model code as the ``attachments``
+dict (see ``_build_attachments``), so a script can align an external label file
+to the loaded signal.
 """
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import math
 import os
+import re
 import sys
 import traceback
 
@@ -26,6 +34,25 @@ WORKDIR = sys.argv[1] if len(sys.argv) > 1 else "."
 MAX_ARRAY_VALUES = 4096
 MAX_LIST = 2000
 MAX_DICT_KEYS = 300
+_CLOCK_RE = re.compile(r"^\s*(\d{1,2}):([0-5]?\d):([0-5]?\d(?:\.\d+)?)\s*$")
+
+
+class _AttrDict(dict):
+    """dict with attribute access for sandbox convenience."""
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError as exc:
+            raise AttributeError(key) from exc
+
+
+def _attr(value):
+    if isinstance(value, dict):
+        return _AttrDict({key: _attr(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return [_attr(item) for item in value]
+    return value
 
 
 def _sanitize(value, depth=0):
@@ -66,6 +93,96 @@ def _sanitize(value, depth=0):
         return f if math.isfinite(f) else None
     except Exception:  # noqa: BLE001
         return str(value)[:500]
+
+
+def parse_clock_seconds(value, origin=None, wrap=True):
+    """Parse seconds or HH:MM:SS(.sss) clock text.
+
+    If ``origin`` is provided, return seconds relative to that origin. When
+    ``wrap`` is true, negative relative offsets are treated as crossing
+    midnight and 86400 seconds is added.
+    """
+    if value is None:
+        raise ValueError("Expected clock format HH:MM:SS or HH:MM:SS.sss, or numeric seconds; got None.")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        seconds = float(value)
+    else:
+        text = str(value).strip()
+        if not text:
+            raise ValueError("Expected clock format HH:MM:SS or HH:MM:SS.sss, or numeric seconds; got empty text.")
+        try:
+            seconds = float(text)
+        except ValueError:
+            match = _CLOCK_RE.match(text)
+            if not match:
+                raise ValueError(
+                    f"Expected clock format HH:MM:SS or HH:MM:SS.sss, or numeric seconds; got {text!r}."
+                ) from None
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            sec = float(match.group(3))
+            seconds = hours * 3600.0 + minutes * 60.0 + sec
+    if not math.isfinite(seconds):
+        raise ValueError("Clock seconds must be finite.")
+    if origin is None:
+        return seconds
+    base = parse_clock_seconds(origin, origin=None, wrap=False)
+    relative = seconds - base
+    if wrap and relative < 0:
+        relative += 86400.0
+    return relative
+
+
+def _build_attachments(records):
+    """Turn the injected attachment payloads into an easy sandbox namespace.
+
+    Each entry exposes the decoded ``text`` plus, for tabular/JSON files, a
+    ready-parsed ``rows`` / ``data`` so model code can align a label file to the
+    signal without re-sniffing the format. Keyed by both file name and id.
+    """
+    attachments = _AttrDict()
+    if not isinstance(records, list):
+        return attachments
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        name = str(record.get("name") or record.get("id") or "attachment")
+        kind = str(record.get("kind") or "text")
+        text = record.get("text") if isinstance(record.get("text"), str) else ""
+        entry = {
+            "name": name,
+            "id": record.get("id"),
+            "kind": kind,
+            "text": text,
+            "preview": record.get("preview") or {},
+            "truncated": bool(record.get("truncated")),
+            "rows": None,
+            "data": None,
+        }
+        try:
+            if kind in ("csv", "tsv", "annot"):
+                delimiter = "\t" if kind == "tsv" else ","
+                preview = record.get("preview") or {}
+                if isinstance(preview.get("delimiter"), str):
+                    delimiter = "\t" if preview["delimiter"] in ("\\t", "\t") else preview["delimiter"]
+                has_header = bool(preview.get("hasHeaderRow", True)) if kind != "annot" else bool(preview.get("hasHeaderRow"))
+                reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+                raw_rows = [row for row in reader if any(cell.strip() for cell in row)]
+                if has_header and raw_rows:
+                    header = [cell.strip() for cell in raw_rows[0]]
+                    entry["header"] = header
+                    entry["rows"] = [dict(zip(header, row)) for row in raw_rows[1:]]
+                else:
+                    entry["rows"] = raw_rows
+            elif kind == "json":
+                entry["data"] = json.loads(text)
+        except Exception:  # noqa: BLE001 - parsing is best-effort convenience
+            pass
+        entry = _attr(entry)
+        attachments[name] = entry
+        if record.get("id"):
+            attachments[str(record["id"])] = entry
+    return attachments
 
 
 def _apply_limits(limits):
@@ -186,10 +303,16 @@ def main():
         "window_duration_sec": window_duration_sec,
         "t_abs": (window_start_sec + np.arange(n_samples) / fs) if fs else np.arange(n_samples),
         "find_channel": find_channel,
+        "parse_clock_seconds": parse_clock_seconds,
+        "clock_to_seconds": parse_clock_seconds,
         "workspace": workspace,
+        "attachments": _build_attachments(meta.get("attachments")),
         "event_candidates": event_candidates,
+        "eventCandidates": event_candidates,
         "markers": event_candidates,
         "result": result,
+        "res": result,
+        "results": result,
     }
     # Models write code blind (they cannot introspect the namespace first), so
     # they reach for the variable names they learned from MNE / common EEG code
@@ -228,10 +351,17 @@ def main():
 
     # The code may have reassigned result/candidate variables in its own scope.
     out_result = namespace.get("result", result)
+    if out_result is result:
+        if "res" in namespace:
+            out_result = namespace["res"]
+        elif "results" in namespace:
+            out_result = namespace["results"]
     out_candidates = namespace.get("event_candidates", event_candidates)
     legacy_candidates = namespace.get("markers", event_candidates)
     if out_candidates is event_candidates and legacy_candidates is not event_candidates:
         out_candidates = legacy_candidates
+    if out_candidates is event_candidates and isinstance(namespace.get("eventCandidates"), list):
+        out_candidates = namespace["eventCandidates"]
 
     saved_figure = False
     try:

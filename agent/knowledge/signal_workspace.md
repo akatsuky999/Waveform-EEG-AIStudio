@@ -82,10 +82,13 @@ screenshot. It accepts `full`, `current`, `range`, `batch`, and `multiscale`.
 
 Events are canonical point or interval objects. Do not infer permission to
 write them merely because a candidate time was discovered. `run_python` exposes
-raw `data`, `fs`, `labels`, `groups`, `t`, `find_channel`, and the current
-`workspace` metadata. Python may fill `event_candidates` (legacy `markers` is an
-alias), but candidates are returned only; `manage_signal_events` is the sole
-Agent event-writing path.
+raw `data`, `fs`, `labels`, `groups`, `t`, `find_channel`, `parse_clock_seconds`
+(`clock_to_seconds` alias), and the current `workspace` metadata. Use
+`parse_clock_seconds(value, origin=None, wrap=True)` for annotation clocks such
+as `HH:MM:SS` or `HH:MM:SS.sss`; it also accepts numeric seconds and handles
+midnight wrap relative to `origin`. Python may fill `event_candidates` (legacy
+`markers` is an alias), but candidates are returned only; `manage_signal_events`
+is the sole Agent event-writing path.
 
 ## Extending the interface
 

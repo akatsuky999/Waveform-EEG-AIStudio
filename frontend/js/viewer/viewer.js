@@ -1410,16 +1410,38 @@ export class WaveformViewer {
     const cSoft = s.getPropertyValue("--ink-soft").trim() || "#6b6862";
     const cAccent = s.getPropertyValue("--accent").trim() || "#c75f3e";
 
-    // time grid
+    // time grid — graph-paper hierarchy: faint fifth-step minors under firm majors
     const span = this.tEnd - this.tStart;
     const step = niceStep(span / 9);
     ctx.lineWidth = 1;
     const first = Math.ceil(this.tStart / step) * step;
-    for (let t = first; t <= this.tEnd + 1e-9; t += step) {
-      const x = this.worldToScreenX(t * this.fs);
+    const minorStep = step / 5;
+    const minorPx = (plotRight - G) * (minorStep / span);
+    const majorXs = [];
+    const i0 = Math.ceil(this.tStart / minorStep - 1e-9);
+    const i1 = Math.floor((this.tEnd + 1e-9) / minorStep);
+    ctx.strokeStyle = cLine;
+    for (let i = i0; i <= i1; i++) {
+      const x = this.worldToScreenX(i * minorStep * this.fs);
       if (x < G - 0.5) continue;
-      ctx.strokeStyle = cLine;
+      const major = ((i % 5) + 5) % 5 === 0;
+      if (major) majorXs.push(x);
+      else if (minorPx < 22) continue;         // minors only when they have room
+      ctx.globalAlpha = major ? 0.95 : 0.35;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, plotBottom); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // zebra row bands — quiet channel separation at readable row heights
+    if (this.rowPx >= 18) {
+      ctx.fillStyle = cInk;
+      ctx.globalAlpha = 0.021;
+      for (let row = 0; row < this.visibleChannels.length; row += 2) {
+        const y = this.worldToScreenY(-row);
+        if (y < -this.rowPx || y > plotBottom + this.rowPx) continue;
+        ctx.fillRect(G, y - this.rowPx / 2, plotRight - G, this.rowPx);
+      }
+      ctx.globalAlpha = 1;
     }
 
     const selectedRow = this.selectedChannel === null ? undefined : this.channelToRow.get(this.selectedChannel);
@@ -1436,12 +1458,16 @@ export class WaveformViewer {
     if (this.measureRange) this._drawMeasureRange(ctx, plotBottom, plotRight, cAccent);
     this._drawEventLines(ctx, plotBottom, plotRight, cAccent);
 
-    // channel baselines
-    for (let row = 0; row < this.visibleChannels.length; row++) {
-      const y = this.worldToScreenY(-row);
-      if (y < -6 || y > plotBottom + 6) continue;
-      ctx.strokeStyle = cLine; ctx.globalAlpha = 0.6;
-      ctx.beginPath(); ctx.moveTo(G, y); ctx.lineTo(plotRight, y); ctx.stroke();
+    // channel baselines — whisper-light; dropped entirely at very dense rows
+    if (this.rowPx >= 7) {
+      ctx.strokeStyle = cLine; ctx.globalAlpha = 0.42;
+      ctx.beginPath();
+      for (let row = 0; row < this.visibleChannels.length; row++) {
+        const y = this.worldToScreenY(-row);
+        if (y < -6 || y > plotBottom + 6) continue;
+        ctx.moveTo(G, y); ctx.lineTo(plotRight, y);
+      }
+      ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
@@ -1459,6 +1485,14 @@ export class WaveformViewer {
     ctx.moveTo(G + 0.5, 0); ctx.lineTo(G + 0.5, plotBottom);
     ctx.moveTo(G, plotBottom + 0.5); ctx.lineTo(plotRight, plotBottom + 0.5);
     ctx.stroke();
+    // tick whiskers under each major gridline give the axis a drafting-table crispness
+    ctx.beginPath();
+    for (const x of majorXs) {
+      if (x < G || x > plotRight) continue;
+      const tx = Math.round(x) + 0.5;
+      ctx.moveTo(tx, plotBottom + 1); ctx.lineTo(tx, plotBottom + 4.5);
+    }
+    ctx.stroke();
 
     // channel labels
     ctx.textBaseline = "middle"; ctx.textAlign = "left";
@@ -1468,11 +1502,16 @@ export class WaveformViewer {
       const c = this.visibleChannels[row];
       const y = this.worldToScreenY(-row);
       if (y < 7 || y > plotBottom - 2) continue;
+      const isSelected = c === this.selectedChannel;
       ctx.fillStyle = this.channelColor[c];
-      ctx.fillRect(10, y - 5, 3, 10);
+      // selected channel: taller swatch + semibold label so the eye finds it in the gutter
+      if (isSelected) ctx.fillRect(10, y - 7, 3, 14);
+      else ctx.fillRect(10, y - 5, 3, 10);
 
       // Channel name only — uses the full gutter so montage labels never clip.
-      ctx.font = '12px "Inter", system-ui, sans-serif';
+      ctx.font = isSelected
+        ? '600 12px "Inter", system-ui, sans-serif'
+        : '12px "Inter", system-ui, sans-serif';
       const label = truncate(ctx, this.channelMeta[c].label, G - 24);
       ctx.fillStyle = cInk;
       ctx.fillText(label, 18, y);

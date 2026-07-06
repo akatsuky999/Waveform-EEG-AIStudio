@@ -1,0 +1,384 @@
+/* Waveform — "instrument panel" redesign for the two workspace panels:
+   Signal workspace (#rail) and Output workbench (#exportPanel).
+
+   The former wall of hairline-separated controls becomes a stack of collapsible
+   module cards. Fraunces serif module titles, a live mono readout per module, a
+   status dot that lights when a module is open, and one clear primary action per
+   card. All explanatory copy is gone — the interface explains itself.
+
+   Loaded after base/components/sidebar, so source order wins.                    */
+
+:root {
+  --ws-card:      #fdfcf7;   /* module surface                          */
+  --ws-card-line: #e7e2d3;   /* module border                           */
+  --ws-well:      #f1eee4;   /* recessed wells inside a card            */
+  --ws-well-line: #e6e1d2;
+  --ws-label:     #8f8a7b;   /* field labels                            */
+  --ws-shadow:    0 1px 2px rgba(29, 27, 22, .04);
+  --ws-grad:      linear-gradient(180deg, #cf6845 0%, #c05330 100%);
+  --ws-grad-hover:linear-gradient(180deg, #c65e3b 0%, #b04c2b 100%);
+}
+
+/* ================================================================ containers */
+#rail.controls-scroll,
+#exportPanel.export-scroll {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 10px 12px 28px; background: transparent;
+}
+/* toggles must stay clickable before a file loads (inputs are disabled instead) */
+.export-scroll.is-disabled { pointer-events: auto; }
+
+/* ================================================================ module card
+   Collapsed modules rest as quiet list rows on the rail; opening one lifts it
+   into a raised sheet of paper. The panel reads as an index of instruments —
+   only what you are working with takes physical form.                          */
+.ws-section {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, margin .18s ease;
+}
+.ws-section:not(.collapsed) {
+  background: var(--ws-card);
+  border-color: var(--ws-card-line);
+  box-shadow: 0 1px 2px rgba(29, 27, 22, .05), 0 6px 18px rgba(29, 27, 22, .05);
+  margin-block: 4px;
+}
+.ws-section:not(.collapsed):first-child { margin-top: 0; }
+
+/* ---- header / toggle ---- */
+.ws-toggle {
+  width: 100%; min-height: 43px;
+  display: flex; align-items: center; gap: 9px;
+  padding: 0 12px 0 13px;
+  border: 0; border-radius: 11px; background: transparent;
+  font-family: var(--sans); text-align: left; cursor: pointer;
+  transition: background .14s ease;
+}
+.ws-section.collapsed > .ws-toggle:hover { background: rgba(255, 255, 255, .62); }
+.ws-section:not(.collapsed) > .ws-toggle {
+  border-radius: 11px 11px 0 0;
+  box-shadow: inset 0 -1px 0 rgba(227, 222, 209, .6);
+}
+.ws-section:not(.collapsed) > .ws-toggle:hover { background: rgba(255, 255, 255, .55); }
+.ws-toggle:focus { outline: none; }
+.ws-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* status dot — lit while the module is open, dormant when collapsed */
+.ws-dot {
+  width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 3px rgba(199, 95, 62, .15);
+  transition: background .18s ease, box-shadow .18s ease;
+}
+.ws-section.collapsed .ws-dot { background: #c8c2b1; box-shadow: 0 0 0 3px rgba(29, 27, 22, .04); }
+
+.ws-title {
+  flex: 0 0 auto;
+  font-family: var(--serif); font-size: 13.5px; font-weight: 500;
+  letter-spacing: -.008em; color: var(--ink);
+}
+.ws-meta {
+  flex: 1 1 auto; min-width: 0; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
+  color: #837e6f; transition: opacity .18s ease;
+}
+.ws-section:not(.collapsed) .ws-meta { opacity: .42; }
+.ws-meta:empty { display: none; }
+.ws-count {
+  flex: 0 0 auto; margin-left: auto;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+  color: var(--accent-ink); background: rgba(199, 95, 62, .1);
+  border-radius: 100px; padding: 1.5px 7px;
+}
+.ws-count:empty { display: none; }
+.ws-chev {
+  flex: 0 0 auto; width: 14px; height: 14px; margin-left: 2px;
+  fill: none; stroke: #b6b09f; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  transition: transform .2s cubic-bezier(.33, 0, .2, 1), stroke .13s ease;
+}
+.ws-toggle:hover .ws-chev { stroke: var(--ink-soft); }
+.ws-section.collapsed .ws-chev { transform: rotate(-90deg); }
+
+/* ---- body ---- */
+.ws-body[hidden] { display: none; }
+.ws-body-inner { padding: 12px 14px 16px; }
+
+/* recessed sub-group inside a card */
+.ws-sub { margin-top: 16px; padding-top: 13px; border-top: 1px solid rgba(227, 222, 209, .85); }
+.ws-sub-label {
+  display: block; margin: 0 0 10px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ws-label);
+}
+.ws-sub-label::before { content: none; }
+
+/* explanatory copy is gone — the JS-driven hint nodes stay in the DOM, hidden */
+#rail .hint, #exportPanel .hint, #exportPanel .export-note { display: none; }
+
+/* ============================================================ shared controls */
+/* field labels */
+#rail .mini-field, #exportPanel .export-grid label {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .09em; color: var(--ws-label);
+}
+#rail .mini-field { gap: 7px; }
+#rail .mini-field.full { margin-top: 13px; }
+
+/* inputs + selects: quiet white fields, mono numerals */
+#rail .mini-field input, #rail .mini-field select, #rail .search-input,
+#exportPanel .export-grid select, #exportPanel .export-grid input[type="number"] {
+  border: 1px solid #e4dfcf; border-radius: 9px; background: #fff;
+  padding: 8px 10px; font-size: 12.5px;
+}
+#rail .mini-field input[type="number"],
+#exportPanel .export-grid input[type="number"] {
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+}
+#exportPanel .export-grid { gap: 9px; }
+#exportPanel .export-grid select, #exportPanel .export-grid input[type="number"] { margin-top: 6px; }
+
+/* custom-select triggers inside the two panels */
+#rail .cs-trigger { font-size: 12.5px; padding: 8px 11px; min-height: 36px; }
+
+/* slider rows */
+#rail .ctrl { margin-bottom: 15px; }
+#rail .ctrl .row { margin-bottom: 8px; }
+#rail .ctrl label { font-size: 12.5px; }
+#rail .ctrl .val { font-size: 11px; padding: 2px 8px; }
+
+/* pill-switch rows */
+#rail .switch-row { padding: 7px 0; font-size: 12.5px; }
+
+/* refined checkboxes (workbench option rows) */
+#exportPanel .check-row {
+  gap: 8px; margin-top: 10px;
+  color: #4a463d; font-size: 12px; font-weight: 500;
+}
+#exportPanel .check-row input {
+  appearance: none; -webkit-appearance: none; margin: 0; flex: 0 0 auto;
+  width: 15px; height: 15px; border-radius: 4.5px; cursor: pointer;
+  border: 1px solid #d6d0be; background: #fff;
+  transition: background .13s ease, border-color .13s ease;
+}
+#exportPanel .check-row input:checked {
+  border-color: var(--accent);
+  background: var(--accent) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>') center / 10px no-repeat;
+}
+#exportPanel .check-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#exportPanel .check-row input:disabled { opacity: .45; cursor: not-allowed; }
+.dimension-option span { color: #837e6f; font: 10px var(--mono); }
+
+/* ====================================================== signal workspace cards */
+/* filter presets: quiet chips, clay when active */
+#rail .filter-presets { gap: 6px; margin: 2px 0 12px; }
+#rail .filter-presets button {
+  border: 1px solid transparent; background: var(--ws-well);
+  color: #6d6859; font-size: 10.5px; font-weight: 600; padding: 5px 11px;
+}
+#rail .filter-presets button:hover { background: #fff; border-color: #ddb5a4; color: var(--accent-ink); }
+#rail .filter-presets button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+#rail .filter-response {
+  height: 56px; margin-bottom: 13px;
+  border: 1px solid var(--ws-well-line); border-radius: 10px; background: #fff;
+}
+
+/* normalization formula: quiet math on paper */
+#rail .formula-card {
+  margin-top: 11px; min-height: 48px; padding: 12px;
+  border: 1px solid var(--ws-well-line); border-radius: 10px; background: #fff;
+}
+#rail .norm-params { margin-top: 12px; }
+#rail .prow { margin-bottom: 8px; }
+#rail .plabel { font-size: 12px; }
+
+/* segmented tracks recessed into the card */
+#rail .segmented, #rail .seg-mini { background: var(--ws-well); }
+
+/* channel tools */
+#rail .search-input { margin-bottom: 0; }
+#rail .selected-card {
+  margin-top: 13px; padding: 10px 12px;
+  border: 1px solid var(--ws-well-line); border-left: 3px solid var(--accent);
+  border-radius: 10px; background: #fff;
+  font-size: 11.5px; line-height: 1.5;
+}
+/* Solo · Pin · Hide as one joined instrument switch, not three loose buttons */
+#rail .action-row {
+  gap: 0; margin-top: 10px;
+  border: 1px solid #e4dfcf; border-radius: 9px; overflow: hidden; background: #fff;
+}
+#rail .action-row button {
+  padding: 8px 0; border: 0; border-radius: 0; background: transparent;
+  font-size: 11.5px; font-weight: 600; color: #565146;
+}
+#rail .action-row button + button { border-left: 1px solid #eee9db; }
+#rail .action-row button:hover { background: rgba(199, 95, 62, .06); color: var(--accent-ink); }
+
+#rail .wide-btn { border-color: #e4dfcf; border-radius: 9px; font-size: 12px; }
+#rail .wide-btn.ghost { color: var(--ink-soft); border-style: dashed; }
+#rail .wide-btn.ghost:hover { color: var(--accent-ink); border-style: solid; }
+
+/* finer slider hardware */
+#rail input[type="range"] { height: 4px; }
+#rail input[type="range"]::-webkit-slider-thumb {
+  width: 15px; height: 15px; border-width: 2.5px;
+}
+#rail input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-width: 2.5px;
+}
+#rail input[type="range"]::-moz-range-progress,
+#rail input[type="range"]::-moz-range-track { height: 4px; }
+
+/* legend sits in a soft well so the channel list reads as one instrument row */
+.ws-legend-well {
+  margin-top: 13px; padding: 5px 7px;
+  border: 1px solid var(--ws-well-line); border-radius: 10px; background: var(--ws-well);
+  max-height: 228px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: #d9d3c2 transparent;
+}
+.ws-legend-well::-webkit-scrollbar { width: 8px; }
+.ws-legend-well::-webkit-scrollbar-thumb { background: #d9d3c2; border: 2px solid var(--ws-well); border-radius: 8px; }
+.ws-legend-well .legend .item { margin: 0; padding: 5.5px 8px; font-size: 12.5px; }
+.ws-legend-well .legend .item:hover { background: rgba(255, 255, 255, .75); }
+.ws-legend-well .legend .count { background: rgba(255, 255, 255, .8); }
+
+/* events + file metadata */
+#rail .marker-list > span { color: var(--muted); font-size: 11.5px; }
+#rail .marker-row { background: var(--ws-well); }
+#rail .attr-list { font-size: 11px; gap: 8px; }
+#rail .attr-list .a span:last-child { font-size: 10.5px; }
+
+/* analysis card (toggled by the Analysis button — no collapse header of its own) */
+#analysisPanel.ws-analysis {
+  padding: 12px 13px 14px; gap: 11px;
+  background: var(--ws-card); border: 1px solid var(--ws-card-line);
+  border-radius: 12px; box-shadow: var(--ws-shadow);
+}
+#analysisPanel .analysis-head b { font-family: var(--serif); font-size: 14.5px; font-weight: 500; }
+#analysisPanel #analysisCanvas { border-color: var(--ws-well-line); border-radius: 10px; }
+
+/* ====================================================== output workbench cards */
+/* hero action — the one-click export */
+.ws-hero {
+  width: 100%; min-height: 40px; margin-top: 2px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  border: 0; border-radius: 10px; cursor: pointer;
+  background: var(--ws-grad); color: #fff;
+  font: 600 12.5px var(--sans); letter-spacing: .01em;
+  box-shadow: 0 2px 7px rgba(163, 66, 38, .24), inset 0 1px 0 rgba(255, 255, 255, .18);
+  transition: background .15s ease, box-shadow .15s ease, transform .05s ease;
+}
+.ws-hero:hover { background: var(--ws-grad-hover); box-shadow: 0 3px 11px rgba(163, 66, 38, .3), inset 0 1px 0 rgba(255, 255, 255, .2); }
+.ws-hero:active { transform: translateY(1px); }
+.ws-hero svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ws-hero:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.ws-hero.is-frozen { opacity: .45; filter: grayscale(.6); cursor: not-allowed; pointer-events: none; box-shadow: none; }
+
+/* quiet + accent action rows */
+#exportPanel .export-buttons { gap: 8px; margin-top: 10px; }
+#exportPanel .export-buttons button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 7px 6px; white-space: nowrap;
+  border: 1px solid #e4dfcf; border-radius: 9px; background: #fff;
+  font-size: 11px; font-weight: 600; color: #4a463d;
+}
+#exportPanel .export-buttons button:hover { border-color: #ddb5a4; color: var(--accent-ink); }
+#exportPanel .export-buttons button svg {
+  width: 13px; height: 13px; flex: 0 0 auto; opacity: .8;
+  fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+#exportPanel .export-buttons button.export-accent,
+#exportPanel .export-primary {
+  border: 0; color: #fff; background: var(--ws-grad);
+  box-shadow: 0 2px 6px rgba(163, 66, 38, .2), inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+#exportPanel .export-buttons button.export-accent:hover,
+#exportPanel .export-primary:hover { color: #fff; background: var(--ws-grad-hover); }
+#exportPanel .export-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 38px; margin-top: 11px; border-radius: 10px;
+  font-size: 12px; font-weight: 600;
+}
+
+/* dimension readout: one quiet mono line, not a box */
+#exportPanel .dimension-summary {
+  margin: 12px 0 0 !important; padding: 9px 1px 0;
+  border: 0; border-top: 1px solid rgba(227, 222, 209, .85); border-radius: 0;
+  background: transparent !important;
+  color: #837e6f !important; font: 9.5px var(--mono) !important; letter-spacing: -.01em;
+}
+
+/* batch settings well */
+#exportPanel .batch-settings {
+  margin-top: 10px; padding: 11px;
+  border: 1px solid var(--ws-well-line); border-radius: 10px; background: var(--ws-well);
+}
+
+/* status: quiet mono line under the stack */
+#exportPanel + .export-status, .export-status {
+  min-height: 0; margin: 0; padding: 2px 4px 0;
+  color: #837e6f; font: 10px var(--mono); line-height: 1.5;
+  background: transparent; border: 0;
+}
+.export-status:empty { display: none; }
+.export-status.error { color: var(--accent-ink); }
+
+/* ================================================================ panel chrome */
+.sidebar-view-head {
+  border-bottom: 0;
+  background: linear-gradient(180deg, rgba(250, 249, 244, .75), rgba(250, 249, 244, .3));
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+/* editorial masthead: italic serif eyebrow over a roman serif title */
+.sidebar-eyebrow {
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-size: 11px; letter-spacing: .012em; text-transform: lowercase;
+  color: var(--accent-ink); opacity: .85; margin-bottom: 2px;
+}
+.sidebar-view-head strong { font-size: 15.5px; }
+.sidebar-head-actions { gap: 4px; }
+.sidebar-head-actions button {
+  border-radius: 100px; padding: 5px 10px; font-weight: 600; font-size: 10.5px;
+  background: #fff; box-shadow: var(--ws-shadow);
+}
+
+/* numerals align in columns wherever they appear */
+.ws-count, .ctrl .val, #rail .attr-list, #rail .marker-row,
+.dimension-summary, .export-status, .ws-legend-well .legend .count {
+  font-variant-numeric: tabular-nums;
+}
+
+.controls-empty, #exportEmpty.controls-empty {
+  margin: 12px 12px 0; padding: 12px 14px;
+  border: 1px dashed #cfc8b4; border-radius: 11px;
+  background: rgba(255, 255, 255, .5);
+  color: var(--ink-soft); font-size: 12px; line-height: 1.5;
+}
+
+/* an open in-card menu must paint above the following sibling cards */
+.ws-section:has(.dd-trigger.open), .ws-section:has(.cs-trigger.open) {
+  position: relative; z-index: 30;
+}
+
+/* one gentle staggered settle when a panel becomes active. Fill is `backwards`
+   on purpose: a forwards-filled transform/opacity animation would leave every
+   card a permanent stacking context, burying in-card dropdown menus under the
+   next sibling card. */
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-view.active #rail > .ws-section,
+  .sidebar-view.active #exportPanel > .ws-section {
+    animation: wsCardIn .2s cubic-bezier(.2, .7, .3, 1) backwards;
+  }
+  #rail > .ws-section:nth-child(2), #exportPanel > .ws-section:nth-child(2) { animation-delay: .03s; }
+  #rail > .ws-section:nth-child(3), #exportPanel > .ws-section:nth-child(3) { animation-delay: .06s; }
+  #rail > .ws-section:nth-child(4), #exportPanel > .ws-section:nth-child(4) { animation-delay: .09s; }
+  #rail > .ws-section:nth-child(5), #exportPanel > .ws-section:nth-child(5) { animation-delay: .12s; }
+  #rail > .ws-section:nth-child(n+6) { animation-delay: .15s; }
+}
+@keyframes wsCardIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}

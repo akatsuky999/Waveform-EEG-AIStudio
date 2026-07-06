@@ -31,7 +31,7 @@ export function initExports(ctx) {
     activeController?.abort();
     const requestController = new AbortController();
     activeController = requestController;
-    const original = button.textContent;
+    const original = button.innerHTML;
     button.disabled = true;
     button.textContent = "Preparing…";
     status("Rendering export…");
@@ -43,7 +43,7 @@ export function initExports(ctx) {
       if (error?.name !== "AbortError") status(error.message || String(error), true);
     } finally {
       button.disabled = false;
-      button.textContent = original;
+      button.innerHTML = original;
       if (activeController === requestController) activeController = null;
     }
   };
@@ -52,7 +52,7 @@ export function initExports(ctx) {
     activeController?.abort();
     const requestController = new AbortController();
     activeController = requestController;
-    const original = button.textContent;
+    const original = button.innerHTML;
     button.disabled = true;
     button.textContent = "Rendering…";
     status("Rendering preview…");
@@ -65,7 +65,7 @@ export function initExports(ctx) {
       if (error?.name !== "AbortError") status(error.message || String(error), true);
     } finally {
       button.disabled = false;
-      button.textContent = original;
+      button.innerHTML = original;
       if (activeController === requestController) activeController = null;
     }
   };
@@ -120,8 +120,8 @@ export function initExports(ctx) {
     $("imageAutoHeightSettings").classList.toggle("hidden", !$("imageAutoHeight").checked);
     $("imageRatioLabel").textContent = formatAspectRatio(dimensions.width, dimensions.height);
     $("imageDimensionSummary").textContent = $("imageAutoHeight").checked
-      ? `Output · ${dimensions.width} × ${dimensions.height} px · ${visibleChannelCount()} channels × ${dimensions.rowHeight} px · labels ${labelSize} px`
-      : `Output · ${dimensions.width} × ${dimensions.height} px · ${formatAspectRatio(dimensions.width, dimensions.height)} · labels ${labelSize} px`;
+      ? `${dimensions.width}×${dimensions.height} px · ${visibleChannelCount()} ch × ${dimensions.rowHeight}px · labels ${labelSize}px`
+      : `${dimensions.width}×${dimensions.height} px · ${formatAspectRatio(dimensions.width, dimensions.height)} · labels ${labelSize}px`;
   };
 
   const keepLockedRatio = (changed) => {

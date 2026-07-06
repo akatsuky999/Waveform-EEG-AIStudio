@@ -9,11 +9,12 @@
   <meta name="theme-color" content="#faf9f4" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/components.css" />
   <link rel="stylesheet" href="css/stage.css" />
   <link rel="stylesheet" href="css/sidebar.css" />
+  <link rel="stylesheet" href="css/workstation.css" />
   <link rel="stylesheet" href="/agent/agent.css" />
   <link rel="stylesheet" href="/agent/agent-settings.css" />
   <script type="importmap">
@@ -106,147 +107,184 @@
             </header>
             <div class="controls-empty" id="controlsEmpty">Load an EEG file to enable signal controls.</div>
             <div class="rail controls-scroll is-disabled" id="rail">
-        <section class="ctl-group">
-          <h2>Display</h2>
-          <div class="ctrl">
-            <div class="row"><label>Amplitude gain</label><span class="val" id="gainVal">1.0×</span></div>
-            <input type="range" id="gain" min="-2" max="3" step="0.01" value="0" />
-          </div>
-          <div class="ctrl">
-            <div class="row"><label>Row height</label><span class="val" id="rowVal">46 px</span></div>
-            <input type="range" id="row" min="20" max="130" step="1" value="46" />
-          </div>
-          <label class="mini-field full">Montage
-            <select id="montageMode">
-              <option value="raw">Original channels</option>
-              <option value="bipolar">Bipolar sequential</option>
-              <option value="car">Common average reference</option>
-              <option value="group-car">Group average reference</option>
-              <option value="local">Local neighbor reference</option>
-            </select>
-          </label>
-        </section>
+              <section class="ws-section" data-ws-section="display">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Display</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="ctrl">
+                    <div class="row"><label>Amplitude gain</label><span class="val" id="gainVal">1.0×</span></div>
+                    <input type="range" id="gain" min="-2" max="3" step="0.01" value="0" />
+                  </div>
+                  <div class="ctrl">
+                    <div class="row"><label>Row height</label><span class="val" id="rowVal">46 px</span></div>
+                    <input type="range" id="row" min="20" max="130" step="1" value="46" />
+                  </div>
+                  <label class="mini-field full">Montage
+                    <select id="montageMode">
+                      <option value="raw">Original channels</option>
+                      <option value="bipolar">Bipolar sequential</option>
+                      <option value="car">Common average reference</option>
+                      <option value="group-car">Group average reference</option>
+                      <option value="local">Local neighbor reference</option>
+                    </select>
+                  </label>
+                </div></div>
+              </section>
 
-        <section class="ctl-group">
-          <h2>Filters</h2>
-          <div class="filter-presets" id="filterPresets">
-            <button data-low="1" data-high="70">Review 1–70</button>
-            <button data-low="1" data-high="40">Seizure 1–40</button>
-            <button data-low="0.3" data-high="35">Sleep 0.3–35</button>
-            <button data-low="80" data-high="250">HFO 80–250</button>
-            <button data-low="0" data-high="0" data-notch="off">Off</button>
-          </div>
-          <canvas class="filter-response" id="filterResponse" title="Filter frequency response"></canvas>
-          <div class="grid-2">
-            <label class="mini-field">Low cut <input type="number" id="filterLow" min="0" max="120" step="0.5" placeholder="0" /></label>
-            <label class="mini-field">High cut <input type="number" id="filterHigh" min="0" max="128" step="0.5" placeholder="off" /></label>
-          </div>
-          <label class="mini-field full">Notch
-            <select id="filterNotch">
-              <option value="off">Off</option>
-              <option value="50">50 Hz + harmonics</option>
-              <option value="60">60 Hz + harmonics</option>
-            </select>
-          </label>
-          <p class="hint">Zero-phase cosine-tapered band-pass + harmonic notch, applied before differencing and normalization.</p>
-        </section>
+              <section class="ws-section" data-ws-section="filters">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Filters</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="filter-presets" id="filterPresets">
+                    <button data-low="1" data-high="70">Review 1–70</button>
+                    <button data-low="1" data-high="40">Seizure 1–40</button>
+                    <button data-low="0.3" data-high="35">Sleep 0.3–35</button>
+                    <button data-low="80" data-high="250">HFO 80–250</button>
+                    <button data-low="0" data-high="0" data-notch="off">Off</button>
+                  </div>
+                  <canvas class="filter-response" id="filterResponse" title="Filter frequency response"></canvas>
+                  <div class="grid-2">
+                    <label class="mini-field">Low cut <input type="number" id="filterLow" min="0" max="120" step="0.5" placeholder="0" /></label>
+                    <label class="mini-field">High cut <input type="number" id="filterHigh" min="0" max="128" step="0.5" placeholder="off" /></label>
+                  </div>
+                  <label class="mini-field full">Notch
+                    <select id="filterNotch">
+                      <option value="off">Off</option>
+                      <option value="50">50 Hz + harmonics</option>
+                      <option value="60">60 Hz + harmonics</option>
+                    </select>
+                  </label>
+                </div></div>
+              </section>
 
-        <section class="ctl-group">
-          <h2>Normalization</h2>
-          <div class="dropdown" id="normDropdown">
-            <button class="dd-trigger" id="normTrigger" aria-haspopup="listbox" aria-expanded="false">
-              <span id="normCurrent">Raw</span>
-              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
-            <div class="dd-menu" id="normMenu" role="listbox">
-              <button class="dd-item" data-m="none" role="option">Raw</button>
-              <button class="dd-item" data-m="zscore" role="option">Z-score</button>
-              <button class="dd-item" data-m="minmax" role="option">Min–Max</button>
-              <button class="dd-item" data-m="robust" role="option">Robust</button>
-              <button class="dd-item" data-m="globalz" role="option">Global Z</button>
-              <button class="dd-item" data-m="l2" role="option">Unit norm</button>
-            </div>
-          </div>
-          <div class="formula-card" id="formulaCard"></div>
-          <div class="norm-params" id="normParams"></div>
-          <p class="hint" id="normHint"></p>
-        </section>
+              <section class="ws-section" data-ws-section="transform" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Transform</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="ws-sub-label">Normalization</div>
+                  <div class="dropdown" id="normDropdown">
+                    <button class="dd-trigger" id="normTrigger" aria-haspopup="listbox" aria-expanded="false">
+                      <span id="normCurrent">Raw</span>
+                      <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    <div class="dd-menu" id="normMenu" role="listbox">
+                      <button class="dd-item" data-m="none" role="option">Raw</button>
+                      <button class="dd-item" data-m="zscore" role="option">Z-score</button>
+                      <button class="dd-item" data-m="minmax" role="option">Min–Max</button>
+                      <button class="dd-item" data-m="robust" role="option">Robust</button>
+                      <button class="dd-item" data-m="globalz" role="option">Global Z</button>
+                      <button class="dd-item" data-m="l2" role="option">Unit norm</button>
+                    </div>
+                  </div>
+                  <div class="formula-card" id="formulaCard"></div>
+                  <div class="norm-params" id="normParams"></div>
+                  <p class="hint" id="normHint"></p>
+                  <div class="ws-sub">
+                    <div class="ws-sub-label">Differencing</div>
+                    <div class="segmented" id="diffSeg">
+                      <button data-n="0" class="active">f(t)</button>
+                      <button data-n="1">Δ¹</button>
+                      <button data-n="2">Δ²</button>
+                      <button data-n="3">Δ³</button>
+                      <button data-n="4">Δ⁴</button>
+                    </div>
+                    <p class="hint" id="diffHint"></p>
+                  </div>
+                </div></div>
+              </section>
 
-        <section class="ctl-group">
-          <h2>Differencing</h2>
-          <div class="segmented" id="diffSeg">
-            <button data-n="0" class="active">f(t)</button>
-            <button data-n="1">Δ¹</button>
-            <button data-n="2">Δ²</button>
-            <button data-n="3">Δ³</button>
-            <button data-n="4">Δ⁴</button>
-          </div>
-          <p class="hint" id="diffHint"></p>
-        </section>
+              <section class="ws-section" data-ws-section="channels">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Channels</span>
+                  <span class="ws-meta" id="chCount"></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <input class="search-input" type="search" id="channelSearch" placeholder="Search channel or group" />
+                  <label class="mini-field full">Sort
+                    <select id="channelSort">
+                      <option value="file">File order</option>
+                      <option value="group">Group</option>
+                      <option value="freq">Dominant frequency</option>
+                    </select>
+                  </label>
+                  <div class="selected-card" id="selectedCard">No channel selected</div>
+                  <div class="action-row">
+                    <button id="soloBtn">Solo</button>
+                    <button id="pinBtn">Pin</button>
+                    <button id="hideBtn">Hide</button>
+                  </div>
+                  <button class="wide-btn ghost" id="clearFocusBtn">Clear focus</button>
+                  <div class="ws-legend-well"><div class="legend" id="legend"></div></div>
+                </div></div>
+              </section>
 
-        <section class="ctl-group">
-          <h2>Interaction</h2>
-          <label class="switch-row">
-            <span>Measure drag</span>
-            <input type="checkbox" id="measureToggle" />
-          </label>
-          <label class="switch-row">
-            <span>Drag events</span>
-            <input type="checkbox" id="markerToggle" />
-          </label>
-          <button class="wide-btn" id="addMarkerBtn">Add point at center</button>
-        </section>
+              <section class="ws-section ws-analysis analysis-panel hidden" id="analysisPanel">
+                <div class="analysis-head">
+                  <div>
+                    <b id="analysisTitle">Channel</b>
+                    <span id="analysisSub">Spectrum</span>
+                  </div>
+                  <div class="seg-mini" id="analysisTabs">
+                    <button data-mode="spectrum" class="active">FFT</button>
+                    <button data-mode="spectrogram">Time-freq</button>
+                  </div>
+                  <button class="panel-close" id="analysisClose" title="Hide analysis panel">×</button>
+                </div>
+                <canvas id="analysisCanvas"></canvas>
+                <div class="band-bars" id="bandBars"></div>
+                <div class="measure-grid" id="measureStats"></div>
+              </section>
 
-        <section class="ctl-group analysis-panel hidden" id="analysisPanel">
-          <div class="analysis-head">
-            <div>
-              <b id="analysisTitle">Channel</b>
-              <span id="analysisSub">Spectrum</span>
-            </div>
-            <div class="seg-mini" id="analysisTabs">
-              <button data-mode="spectrum" class="active">FFT</button>
-              <button data-mode="spectrogram">Time-freq</button>
-            </div>
-            <button class="panel-close" id="analysisClose" title="Hide analysis panel">×</button>
-          </div>
-          <canvas id="analysisCanvas"></canvas>
-          <div class="band-bars" id="bandBars"></div>
-          <div class="measure-grid" id="measureStats"></div>
-        </section>
+              <section class="ws-section" data-ws-section="interaction" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Interaction</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <label class="switch-row">
+                    <span>Measure drag</span>
+                    <input type="checkbox" id="measureToggle" />
+                  </label>
+                  <label class="switch-row">
+                    <span>Drag events</span>
+                    <input type="checkbox" id="markerToggle" />
+                  </label>
+                  <button class="wide-btn" id="addMarkerBtn">Add point at center</button>
+                </div></div>
+              </section>
 
-        <section class="ctl-group">
-          <h2>Channel Tools</h2>
-          <input class="search-input" type="search" id="channelSearch" placeholder="Search channel or group" />
-          <label class="mini-field full">Sort
-            <select id="channelSort">
-              <option value="file">File order</option>
-              <option value="group">Group</option>
-              <option value="freq">Dominant frequency</option>
-            </select>
-          </label>
-          <div class="selected-card" id="selectedCard">No channel selected</div>
-          <div class="action-row">
-            <button id="soloBtn">Solo</button>
-            <button id="pinBtn">Pin</button>
-            <button id="hideBtn">Hide</button>
-          </div>
-          <button class="wide-btn ghost" id="clearFocusBtn">Clear focus</button>
-        </section>
+              <section class="ws-section" data-ws-section="events" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Events</span>
+                  <span class="ws-count" data-ws-count></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="marker-list" id="markerList"></div>
+                </div></div>
+              </section>
 
-        <section class="ctl-group">
-          <h2>Channels <span class="muted" id="chCount"></span></h2>
-          <div class="legend" id="legend"></div>
-        </section>
-
-        <section class="ctl-group">
-          <h2>Events</h2>
-          <div class="marker-list" id="markerList"></div>
-        </section>
-
-        <section class="ctl-group meta-group">
-          <h2>File</h2>
-          <div class="attr-list" id="attrList"></div>
-        </section>
+              <section class="ws-section" data-ws-section="file" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">File</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="attr-list" id="attrList"></div>
+                </div></div>
+              </section>
             </div>
           </section>
 
@@ -256,84 +294,111 @@
             </header>
             <div class="controls-empty show" id="exportEmpty">Load an EEG file to enable exports.</div>
             <div class="export-scroll is-disabled" id="exportPanel">
-              <section class="export-group">
-                <h2>Quick Export</h2>
-                <div class="export-buttons">
-                  <button class="export-accent" id="pngViewBtn">Current view PNG</button>
-                </div>
-                <div class="export-buttons two">
-                  <button id="csvBtn">Visible CSV</button>
-                  <button id="eventsBtn">Events JSON</button>
-                </div>
-              </section>
-
-              <section class="export-group">
-                <h2>Image Dimensions</h2>
-                <div class="export-grid">
-                  <label>Width (px)<input type="number" id="imageWidth" min="320" max="8192" step="1" value="1600" /></label>
-                  <label>Height (px)<input type="number" id="imageHeight" min="240" max="8192" step="1" value="1200" /></label>
-                </div>
-                <label class="check-row dimension-option"><input type="checkbox" id="imageRatioLock" /> Lock current ratio <span id="imageRatioLabel">4:3</span></label>
-                <label class="check-row dimension-option"><input type="checkbox" id="imageAutoHeight" /> Auto height by channel count</label>
-                <div class="export-grid auto-height-settings hidden" id="imageAutoHeightSettings">
-                  <label>Channel row (px)<input type="number" id="imageRowHeight" min="16" max="96" step="1" value="32" /></label>
-                </div>
-                <div class="export-grid one image-label-settings">
-                  <label>Channel label (px)<input type="number" id="imageLabelSize" min="6" max="32" step="1" value="12" /></label>
-                </div>
-                <p class="dimension-summary" id="imageDimensionSummary">Output · 1600 × 1200 px · 4:3 · labels 12 px</p>
-              </section>
-
-              <section class="export-group">
-                <h2>Viewer Image</h2>
-                <div class="export-grid">
-                  <label><select id="viewerBgMode" aria-label="Background"><option value="transparent">Transparent</option><option value="theme">Current theme</option><option value="white">White</option><option value="custom">Custom</option></select></label>
-                  <label class="color-field hidden" id="viewerCustomBgWrap">Color<input type="color" id="viewerCustomBg" value="#ffffff" /></label>
-                </div>
-                <label class="check-row"><input type="checkbox" id="viewerLabels" checked /> Channel labels</label>
-                <label class="check-row"><input type="checkbox" id="viewerEvents" checked /> Event track</label>
-                <div class="export-buttons two">
-                  <button id="viewerPreviewBtn">Preview</button>
-                  <button class="export-accent" id="viewerImageBtn">Export PNG</button>
-                </div>
-              </section>
-
-              <section class="export-group">
-                <h2>Training Image</h2>
-                <div class="export-grid">
-                  <label>Signal<select id="trainingSource"><option value="processed" selected>Processed</option><option value="raw">Raw</option></select></label>
-                  <label>Palette<select id="trainingPalette"><option value="cycle" selected>Cycle colors</option><option value="black">All black</option><option value="mono">Custom mono</option><option value="current">Current colors</option></select></label>
-                  <label class="color-field hidden" id="trainingMonoWrap">Line<input type="color" id="trainingMono" value="#111111" /></label>
-                </div>
-                <label class="check-row"><input type="checkbox" id="trainingLabels" /> Channel labels</label>
-                <label class="check-row"><input type="checkbox" id="trainingEvents" /> Event annotations</label>
-                <div class="export-buttons two">
-                  <button id="trainingPreviewBtn">Preview current</button>
-                  <button class="export-accent" id="trainingCurrentBtn">Export current</button>
-                </div>
-                <div class="export-buttons">
-                  <button id="trainingBatchToggle">Batch settings</button>
-                </div>
-                <div class="batch-settings hidden" id="trainingBatchSettings">
-                  <div class="export-grid">
-                    <label>Window (s)<input type="number" id="batchWindow" min="0.1" step="0.1" value="10" /></label>
-                    <label>Step (s)<input type="number" id="batchStep" min="0.1" step="0.1" value="10" /></label>
+              <section class="ws-section" data-ws-section="quick">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Quick export</span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <button class="ws-hero" id="pngViewBtn">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 18"/></svg>
+                    Current view PNG
+                  </button>
+                  <div class="export-buttons two">
+                    <button id="csvBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>Visible CSV</button>
+                    <button id="eventsBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></svg>Events JSON</button>
                   </div>
-                  <label class="check-row"><input type="checkbox" id="batchPartial" checked /> Include final partial window</label>
-                  <button class="export-primary" id="trainingBatchBtn">Export full recording ZIP</button>
-                </div>
+                </div></div>
               </section>
 
-              <section class="export-group">
-                <h2>Data Export</h2>
-                <div class="export-grid">
-                  <label>Format<select id="dataFormat"><option value="h5">H5</option><option value="edf">EDF+</option></select></label>
-                  <label>Range<select id="dataRange"><option value="full">Full recording</option><option value="current">Current window</option></select></label>
-                  <label>Channels<select id="dataChannels"><option value="all">All channels</option><option value="visible">Visible channels</option></select></label>
-                  <label>Signal<select id="dataSource"><option value="raw">Raw</option><option value="processed">Processed</option></select></label>
-                </div>
-                <p class="export-note" id="dataExportNote">H5 stores structured events and complete processing provenance.</p>
-                <button class="export-primary" id="dataExportBtn">Export H5</button>
+              <section class="ws-section" data-ws-section="image">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Image setup</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="export-grid">
+                    <label>Width (px)<input type="number" id="imageWidth" min="320" max="8192" step="1" value="1600" /></label>
+                    <label>Height (px)<input type="number" id="imageHeight" min="240" max="8192" step="1" value="1200" /></label>
+                  </div>
+                  <label class="check-row dimension-option"><input type="checkbox" id="imageRatioLock" /> Lock current ratio <span id="imageRatioLabel">4:3</span></label>
+                  <label class="check-row dimension-option"><input type="checkbox" id="imageAutoHeight" /> Auto height by channel count</label>
+                  <div class="export-grid auto-height-settings hidden" id="imageAutoHeightSettings">
+                    <label>Channel row (px)<input type="number" id="imageRowHeight" min="16" max="96" step="1" value="32" /></label>
+                  </div>
+                  <div class="export-grid one image-label-settings">
+                    <label>Channel label (px)<input type="number" id="imageLabelSize" min="6" max="32" step="1" value="12" /></label>
+                  </div>
+                  <p class="dimension-summary" id="imageDimensionSummary">Output · 1600 × 1200 px · 4:3 · labels 12 px</p>
+                </div></div>
+              </section>
+
+              <section class="ws-section" data-ws-section="viewer" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Viewer image</span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="export-grid">
+                    <label><select id="viewerBgMode" aria-label="Background"><option value="transparent">Transparent</option><option value="theme">Current theme</option><option value="white">White</option><option value="custom">Custom</option></select></label>
+                    <label class="color-field hidden" id="viewerCustomBgWrap">Color<input type="color" id="viewerCustomBg" value="#ffffff" /></label>
+                  </div>
+                  <label class="check-row"><input type="checkbox" id="viewerLabels" checked /> Channel labels</label>
+                  <label class="check-row"><input type="checkbox" id="viewerEvents" checked /> Event track</label>
+                  <div class="export-buttons two">
+                    <button id="viewerPreviewBtn">Preview</button>
+                    <button class="export-accent" id="viewerImageBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export PNG</button>
+                  </div>
+                </div></div>
+              </section>
+
+              <section class="ws-section" data-ws-section="training" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Training image</span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="export-grid">
+                    <label>Signal<select id="trainingSource"><option value="processed" selected>Processed</option><option value="raw">Raw</option></select></label>
+                    <label>Palette<select id="trainingPalette"><option value="cycle" selected>Cycle colors</option><option value="black">All black</option><option value="mono">Custom mono</option><option value="current">Current colors</option></select></label>
+                    <label class="color-field hidden" id="trainingMonoWrap">Line<input type="color" id="trainingMono" value="#111111" /></label>
+                  </div>
+                  <label class="check-row"><input type="checkbox" id="trainingLabels" /> Channel labels</label>
+                  <label class="check-row"><input type="checkbox" id="trainingEvents" /> Event annotations</label>
+                  <div class="export-buttons two">
+                    <button id="trainingPreviewBtn">Preview current</button>
+                    <button class="export-accent" id="trainingCurrentBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export current</button>
+                  </div>
+                  <div class="export-buttons">
+                    <button id="trainingBatchToggle">Batch settings</button>
+                  </div>
+                  <div class="batch-settings hidden" id="trainingBatchSettings">
+                    <div class="export-grid">
+                      <label>Window (s)<input type="number" id="batchWindow" min="0.1" step="0.1" value="10" /></label>
+                      <label>Step (s)<input type="number" id="batchStep" min="0.1" step="0.1" value="10" /></label>
+                    </div>
+                    <label class="check-row"><input type="checkbox" id="batchPartial" checked /> Include final partial window</label>
+                    <button class="export-primary" id="trainingBatchBtn">Export full recording ZIP</button>
+                  </div>
+                </div></div>
+              </section>
+
+              <section class="ws-section" data-ws-section="data" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Data export</span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="export-grid">
+                    <label>Format<select id="dataFormat"><option value="h5">H5</option><option value="edf">EDF+</option></select></label>
+                    <label>Range<select id="dataRange"><option value="full">Full recording</option><option value="current">Current window</option></select></label>
+                    <label>Channels<select id="dataChannels"><option value="all">All channels</option><option value="visible">Visible channels</option></select></label>
+                    <label>Signal<select id="dataSource"><option value="raw">Raw</option><option value="processed">Processed</option></select></label>
+                  </div>
+                  <p class="export-note" id="dataExportNote">H5 stores structured events and complete processing provenance.</p>
+                  <button class="export-primary" id="dataExportBtn">Export H5</button>
+                </div></div>
               </section>
               <div class="export-status" id="exportStatus" role="status" aria-live="polite"></div>
             </div>
@@ -348,73 +413,71 @@
               </div>
             </header>
             <div class="agent-settings-scroll">
-              <section class="ai-settings-card provider">
-                <div class="ai-settings-card-head">
-                  <div>
-                    <b>Provider</b>
+              <section class="ws-section ws-provider" data-ws-section="provider">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Provider</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="ai-field full">
+                    <label for="aiBaseUrl">Base URL</label>
+                    <input type="url" id="aiBaseUrl" placeholder="api.openai.com / provider" autocomplete="off" />
                   </div>
-                  <span class="ai-config-pill">Session key</span>
-                </div>
-                <div class="ai-field full">
-                  <label for="aiBaseUrl">Base URL</label>
-                  <input type="url" id="aiBaseUrl" placeholder="https://api.openai.com or your provider" autocomplete="off" />
-                </div>
-                <div class="ai-field full">
-                  <label for="aiApiKey">API Key</label>
-                  <input type="password" id="aiApiKey" placeholder="Stored in this browser session only" autocomplete="off" />
-                </div>
-                <div class="ai-field-row">
-                  <div class="ai-field">
-                    <label for="aiModelSelect">Model</label>
-                    <select id="aiModelSelect"></select>
+                  <div class="ai-field full">
+                    <label for="aiApiKey">API Key</label>
+                    <input type="password" id="aiApiKey" placeholder="session only" autocomplete="off" />
                   </div>
-                  <div class="ai-field hidden" id="aiCustomWrap">
-                    <label for="aiCustomModel">Custom model</label>
-                    <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
+                  <div class="ai-field-row">
+                    <div class="ai-field">
+                      <label for="aiModelSelect">Model</label>
+                      <select id="aiModelSelect"></select>
+                    </div>
+                    <div class="ai-field hidden" id="aiCustomWrap">
+                      <label for="aiCustomModel">Custom model</label>
+                      <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
+                    </div>
                   </div>
-                </div>
-                <div class="ai-actions-row">
-                  <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
-                  <span id="aiConfigMsg"></span>
-                </div>
+                  <div class="ai-actions-row">
+                    <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
+                    <span id="aiConfigMsg"></span>
+                  </div>
+                </div></div>
               </section>
 
-              <section class="ai-settings-card">
-                <div class="ai-settings-card-head">
-                  <div>
-                    <b>Loop Control</b>
+              <section class="ws-section" data-ws-section="runtime" data-ws-default="collapsed">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Runtime</span>
+                  <span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="ai-metric-grid">
+                    <div class="ai-field compact">
+                      <label for="aiMaxTurns">Steps</label>
+                      <input type="number" id="aiMaxTurns" min="4" max="64" step="1" inputmode="numeric" />
+                    </div>
+                    <div class="ai-field compact">
+                      <label for="aiMaxAgentImages">Images</label>
+                      <input type="number" id="aiMaxAgentImages" min="1" max="5" step="1" inputmode="numeric" />
+                    </div>
+                    <div class="ai-field compact">
+                      <label for="aiMaxImageWindowSec">Window</label>
+                      <input type="number" id="aiMaxImageWindowSec" min="5" max="15" step="1" inputmode="numeric" />
+                    </div>
                   </div>
-                </div>
-                <div class="ai-field compact">
-                  <label for="aiMaxTurns">Max steps</label>
-                  <input type="number" id="aiMaxTurns" min="4" max="64" step="1" inputmode="numeric" />
-                </div>
+                </div></div>
               </section>
 
-              <section class="ai-settings-card">
-                <div class="ai-settings-card-head">
-                  <div>
-                    <b>Image Budget</b>
-                  </div>
-                </div>
-                <div class="ai-field-row">
-                  <div class="ai-field compact">
-                    <label for="aiMaxAgentImages">Max images</label>
-                    <input type="number" id="aiMaxAgentImages" min="1" max="5" step="1" inputmode="numeric" />
-                  </div>
-                  <div class="ai-field compact">
-                    <label for="aiMaxImageWindowSec">Window seconds</label>
-                    <input type="number" id="aiMaxImageWindowSec" min="5" max="15" step="1" inputmode="numeric" />
-                  </div>
-                </div>
-              </section>
-
-              <section class="ai-settings-card skills">
-                <div class="ai-settings-card-head">
-                  <div>
-                    <b>EEG Skills</b>
-                  </div>
-                  <div class="ai-skill-head-actions">
+              <section class="ws-section" data-ws-section="skills">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Skills</span>
+                  <span class="ws-count" data-ws-count></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="ai-skill-toolbar">
+                    <input class="ai-skill-search" type="search" id="aiSkillSearch" placeholder="Search skills or triggers" />
                     <button class="ai-mini-action icon-only" id="aiRefreshSkillsBtn" type="button" title="Refresh skills">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                     </button>
@@ -423,11 +486,10 @@
                       <span>New</span>
                     </button>
                   </div>
-                </div>
-                <input class="ai-skill-search" type="search" id="aiSkillSearch" placeholder="Search skills or triggers" />
-                <div class="ai-skill-list" id="aiSkillList">
-                  <div class="ai-skill-empty">Loading EEG skills...</div>
-                </div>
+                  <div class="ai-skill-list" id="aiSkillList">
+                    <div class="ai-skill-empty">Loading EEG skills…</div>
+                  </div>
+                </div></div>
               </section>
             </div>
           </section>

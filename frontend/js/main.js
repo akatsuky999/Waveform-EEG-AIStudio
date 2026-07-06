@@ -12,6 +12,7 @@ import { initControls } from "./ui/controls.js";
 import { initExports } from "./ui/exports.js";
 import { initSidebar } from "./ui/sidebar.js";
 import { initProjectExplorer } from "./ui/project-explorer.js";
+import { initCollapsibles, refreshWsMeta } from "./ui/collapsible.js";
 import { enhanceAll } from "./ui/custom-select.js";
 import { dataFileType, isSupportedDataFile } from "./core/project-tree.js";
 import { createSignalWorkspaceHost } from "./core/signal-workspace-host.js";
@@ -102,13 +103,14 @@ function showError(msg) {
 function setControlsEnabled(enabled) {
   $("rail").classList.toggle("is-disabled", !enabled);
   $("controlsEmpty").classList.toggle("show", !enabled);
-  $("rail").querySelectorAll("button, input, select").forEach((control) => { control.disabled = !enabled; });
+  // leave the collapse toggles usable so sections can be arranged before a file loads
+  $("rail").querySelectorAll("button:not(.ws-toggle), input, select").forEach((control) => { control.disabled = !enabled; });
 }
 
 function setExportEnabled(enabled) {
   $("exportPanel").classList.toggle("is-disabled", !enabled);
   $("exportEmpty").classList.toggle("show", !enabled);
-  $("exportPanel").querySelectorAll("button, input, select").forEach((control) => { control.disabled = !enabled; });
+  $("exportPanel").querySelectorAll("button:not(.ws-toggle), input, select").forEach((control) => { control.disabled = !enabled; });
 }
 
 function beginLoad(path, projectPath = "") {
@@ -246,6 +248,7 @@ function onLoaded(header, { preserveProcessing = false, montageFallback = false 
   // annotations are reset by viewer.setData for every newly loaded recording.
   ctx.syncControlsFromViewer?.();
   ctx.syncNormFromViewer?.();
+  refreshWsMeta();
   $("channelSearch").value = ""; $("channelSort").value = "file";
   $("measureToggle").checked = false; $("markerToggle").checked = false;
   ctx.renderEvents([]);
@@ -339,3 +342,9 @@ initAgent(host);
 // + the agent model picker). Runs after initAgent so the model <select> exists;
 // the enhancer self-updates when the agent later refreshes its model list.
 enhanceAll(document);
+
+// Collapsible "module cards" for the Signal workspace + Output workbench panels.
+// A canvas drawn while its card was display:none has no size — repaint on expand.
+initCollapsibles({
+  onExpand: (id) => { if (id === "filters") ctx.renderFilterResponse?.(); },
+});

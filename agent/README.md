@@ -14,7 +14,10 @@ agent/
 │   ├── agent.js          controller: initAgent(host) + the real multi-step tool loop (+ Stop)
 │   ├── prompt.js         compact system policy + model presets
 │   ├── tool-definitions.js schemas + read/write/concurrency/destructive metadata
-│   ├── intent-policy.js  per-turn annotation/file/export authorization
+│   ├── intent-policy.js  per-turn reading of what the user asked for / refused
+│   ├── permissions.js    permission broker: modes, grants, and the user prompt
+│   ├── context-budget.js token accounting for the pending request
+│   ├── compaction.js     structured handoff summary when the window fills
 │   ├── tools.js          execution against the formal SignalWorkspaceHost
 │   ├── stream.js         SSE streaming + native tool_call accumulation (+ legacy <eeg-tools> fallback)
 │   ├── ui.js             drawer UI: conversation, status, run timeline + tool cards
@@ -40,11 +43,40 @@ agent/
    writes remain serial.
 3. Stop when the model returns no tool calls (or on the step cap / **Stop** button).
 
-The controller derives a conservative action policy from every user turn.
-Annotation, source switching, and downloads are blocked unless that turn
-explicitly authorizes the side effect; negative wording wins. Legacy tool names
-and the `<eeg-tools>` protocol remain dispatch-compatible but are not exposed in
-the current schema.
+Legacy tool names and the `<eeg-tools>` protocol remain dispatch-compatible but
+are not exposed in the current schema.
+
+## Permission model
+
+Side effects — writing events, opening another recording, downloading an
+artifact, saving a skill — go through the broker in `permissions.js` rather than
+being inferred from wording alone:
+
+- **Read-only** mode blocks every side effect without asking.
+- An **explicit refusal** in the current turn ("do not annotate") is final and is
+  never escalated into a prompt.
+- A **standing conversation grant**, **trusted** mode, or a turn that already
+  asked for the action runs it without interrupting.
+- Anything else is **proposed to the user** as the concrete call — how many
+  events, which time span, which labels, what would be discarded — and they
+  allow it once, allow it for the conversation, or deny it. Denials are recorded
+  as `PERMISSION_DENIED`, which the model is instructed never to retry.
+
+The tool result reports how the action was authorized, so the transcript shows
+the provenance of every side effect.
+
+## Context budget and compaction
+
+`context-budget.js` estimates the tokens of the pending request (system prompt,
+tool schemas, injected workspace state, transcript, images) against a
+user-configured context window, and the drawer shows the resulting percentage
+with a breakdown. When the usable budget passes the compaction threshold — or
+the provider reports an overflow — `compaction.js` folds the older messages into
+a structured EEG handoff summary: task and authorization state, recording and
+processing chain, measured evidence with channels and time windows, visual
+findings, events, side effects already performed, dead ends, and next steps. The
+original request and the most recent messages are kept verbatim, and tool-call
+pairing is preserved across the rewrite.
 
 ## Tools
 

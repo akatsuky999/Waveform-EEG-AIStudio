@@ -34,8 +34,35 @@ Signal sources are:
   explicit export/download/save intent. Images produced only for Agent vision
   are not downloaded.
 
-Negative instructions always win. “Do not annotate”, “only analyze”, “do not
-switch files”, and “do not save” keep the corresponding capability blocked.
+### How a side effect is authorized
+
+Every side effect resolves through one permission layer, in this order:
+
+1. **Read-only mode** — nothing with a side effect runs, and no prompt is shown.
+2. **Explicit refusal in the current turn** — “do not annotate”, “only analyze”,
+   “do not switch files”, “do not save”. This is final and is never escalated to
+   a prompt. Negative instructions always win.
+3. **A standing approval** the user already gave for this conversation.
+4. **Trusted mode** — approvals are automatic for the conversation.
+5. **The current turn already asked for it** — the action runs without a prompt.
+6. **Otherwise the exact call is proposed to the user**, who allows it once,
+   allows it for the conversation, or denies it.
+
+So an unrequested side effect is a proposal, not a refusal: a well-scoped,
+batched call may be offered when it serves the task. Because the user reviews
+the arguments themselves, one call carrying the full event set is reviewable
+where twenty single-event calls are not. A `PERMISSION_DENIED` result is final
+for that action — do not retry it, rephrase it, or route the same effect through
+another tool. Approval is not completion: only a successful tool result means
+the effect happened.
+
+### Context compaction
+
+A long run is compacted when the context window fills: earlier messages are
+replaced by a structured handoff summary, and rendered images do not survive.
+Record each measurement (channel, time window, value, montage/filter) and state
+morphology conclusions in text when you see the image, so the evidence chain
+still holds after compaction.
 
 ## Evidence workflow
 

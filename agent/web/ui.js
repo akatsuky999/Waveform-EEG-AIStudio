@@ -9,6 +9,11 @@ import {
 } from "./prompt.js";
 import { loadAgentSettings, saveAgentSettings } from "./settings-store.js";
 import { createSkillsManager } from "./skills-ui.js";
+import {
+  DEFAULT_CONTEXT_WINDOW, MAX_CONTEXT_WINDOW, MIN_CONTEXT_WINDOW,
+  normalizeContextWindow, readModelContextMap,
+} from "./context-budget.js";
+import { DEFAULT_PERMISSION_MODE, PERMISSION_MODES } from "./permissions.js";
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_MAX_TURNS = 16;
@@ -25,11 +30,11 @@ const EMPTY_STATE_HTML = `
   <div class="ai-empty">
     <span class="ai-empty-eyebrow">Agent</span>
     <b>EEG-Master</b>
-    <p>I work like an agent: I dig into the actual recording to answer you — inspecting channels, running Python on the real signal, reading the waveform, and annotating events — rather than guessing from a summary.</p>
+    <p>Works the recording, not a summary.</p>
     <div class="ai-empty-caps">
       <span><i>01</i>Inspect &amp; rank channels</span>
-      <span><i>02</i>Run Python on the real signal</span>
-      <span><i>03</i>Detect &amp; mark onset / offset</span>
+      <span><i>02</i>Run Python on the signal</span>
+      <span><i>03</i>Mark onset / offset</span>
     </div>
   </div>`;
 
@@ -48,11 +53,111 @@ export function initDrawerUI(host, handlers = {}) {
     if (!Number.isFinite(number)) return fallback;
     return Math.max(min, Math.min(max, number));
   }
+  // ---- context window: detected, learned, or set by hand --------------------
+  // Priority: a value the user typed (never overwritten) > what the provider
+  // declared for this model in /v1/models > what the provider told us in an
+  // overflow error > the configured default.
+  let modelContextMap = new Map();
+  let contextSource = "default";
+
+  const CONTEXT_SOURCE_LABEL = {
+    provider: "from provider", learned: "from provider limit", manual: "manual", default: "default",
+  };
+
+  function setContextWindow(tokens, source) {
+    const field = $("aiContextWindow");
+    if (!field) return false;
+    const value = normalizeContextWindow(tokens);
+    if (!Number.isFinite(value)) return false;
+    field.value = String(value);
+    contextSource = source;
+    renderContextSource();
+    saveSettings();
+    return true;
+  }
+
+  function renderContextSource() {
+    const badge = $("aiContextSource");
+    if (badge) badge.textContent = CONTEXT_SOURCE_LABEL[contextSource] || "";
+  }
+
+  /** Adopt the window a provider declares for the selected model, if it does. */
+  function applyDetectedContextWindow() {
+    if (contextSource === "manual") return false;          // never fight the user
+    const declared = modelContextMap.get(selectedModel());
+    if (!declared || declared === normalizeContextWindow($("aiContextWindow")?.value)) return false;
+    return setContextWindow(declared, "provider");
+  }
+
+  /** Called when the provider rejects a request for being too long. */
+  function learnContextWindow(tokens) {
+    if (contextSource === "manual") return false;
+    return setContextWindow(tokens, "learned");
+  }
+
+  function currentPermissionMode() {
+    const value = $("aiPermissionMode")?.value;
+    return PERMISSION_MODES.includes(value) ? value : DEFAULT_PERMISSION_MODE;
+  }
+
+  // ---- composer control strip ----
+  // The strip mirrors the agent's operating state at the point of typing: what it
+  // is allowed to do, what it is attached to, which model, how full the context
+  // is. Nothing here needs a label — the value IS the label.
+  const MODE_CHIP = { ask: "Ask", readonly: "Read-only", trusted: "Trusted" };
+
+  function syncModeChip() {
+    const chip = $("aiModeChip");
+    const mode = currentPermissionMode();
+    if (chip) {
+      chip.dataset.mode = mode;
+      chip.textContent = MODE_CHIP[mode] || mode;
+    }
+    // the settings segmented control is the same state, shown in full
+    for (const button of $("aiPermissionSeg")?.querySelectorAll("[data-value]") || []) {
+      button.setAttribute("aria-pressed", String(button.dataset.value === mode));
+    }
+  }
+
+  function setPermissionMode(mode) {
+    const select = $("aiPermissionMode");
+    if (!select || !PERMISSION_MODES.includes(mode)) return;
+    select.value = mode;
+    syncModeChip();
+    saveSettings();
+  }
+
+  function cycleMode() {
+    const next = PERMISSION_MODES[(PERMISSION_MODES.indexOf(currentPermissionMode()) + 1) % PERMISSION_MODES.length];
+    setPermissionMode(next);
+  }
+
+  function syncModelChip() {
+    const chip = $("aiBarModel") || $("aiModelChip");
+    if (!chip) return;
+    const model = selectedModel() || "no model";
+    chip.textContent = model;
+    chip.title = `${model}${$("aiBaseUrl")?.value.trim() ? ` · ${$("aiBaseUrl").value.trim()}` : ""}`;
+  }
+
+  function syncSkillsChip() {
+    const count = $("aiSkillsCount");
+    if (!count) return;
+    const enabled = enabledSkillsForConfig().length;
+    count.textContent = enabled ? String(enabled) : "";
+    count.classList.toggle("show", enabled > 0);
+    $("aiSkillsChip")?.classList.toggle("active", enabled > 0);
+  }
+
+  function syncBar() { syncModeChip(); syncModelChip(); syncSkillsChip(); }
   function currentLimits() {
     return {
       maxTurns: boundedInt($("aiMaxTurns")?.value, DEFAULT_MAX_TURNS, MIN_MAX_TURNS, MAX_MAX_TURNS),
       maxAgentImages: boundedInt($("aiMaxAgentImages")?.value, DEFAULT_MAX_AGENT_IMAGES, MIN_AGENT_IMAGES, MAX_AGENT_IMAGES),
       maxImageWindowSec: boundedInt($("aiMaxImageWindowSec")?.value, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC),
+      contextWindow: normalizeContextWindow($("aiContextWindow")?.value),
+      autoCompact: $("aiAutoCompact") ? Boolean($("aiAutoCompact").checked) : true,
+      permissionMode: currentPermissionMode(),
     };
   }
   function skillManifestForConfig() {
@@ -88,6 +193,7 @@ export function initDrawerUI(host, handlers = {}) {
   }
   function saveSettings({ feedback = false } = {}) {
     if (feedback) setSaveState("busy", "Saving");
+    syncBar();
     const limits = currentLimits();
     const fab = currentFabPosition();
     const settings = {
@@ -97,6 +203,7 @@ export function initDrawerUI(host, handlers = {}) {
       customModel: $("aiCustomModel").value.trim(),
       drawerWidth: parseInt(getComputedStyle(document.documentElement).getPropertyValue("--ai-drawer-w"), 10) || 468,
       enabledSkills: enabledSkillsForConfig(),
+      contextWindowSource: contextSource,
       ...limits,
       ...(fab ? { fabLeft: fab.left, fabTop: fab.top } : {}),
     };
@@ -178,7 +285,14 @@ export function initDrawerUI(host, handlers = {}) {
       if (!res.ok) throw new Error(data.error || res.statusText);
       const models = parseModels(data);
       if (!models.length) throw new Error("No model list returned");
-      setConfigMsg(`Connected · ${models.length} model${models.length === 1 ? "" : "s"} on this provider`, "ok");
+      modelContextMap = readModelContextMap(data);
+      const detected = applyDetectedContextWindow();
+      const declared = modelContextMap.get(selectedModel());
+      setConfigMsg(
+        `Connected · ${models.length} model${models.length === 1 ? "" : "s"}`
+        + (detected ? ` · context ${Math.round(declared / 1000)}k detected` : ""),
+        "ok",
+      );
       setStatus("ok", "Ready");
     } catch (err) {
       setConfigMsg(err.message || "Model test failed", "err");
@@ -266,37 +380,68 @@ export function initDrawerUI(host, handlers = {}) {
       if (pos) setFabPosition(pos.left, pos.top);
     });
   }
+  // The drawer may not eat the stage: its ceiling is whatever is left after the
+  // sidebar and a minimum waveform width.
+  function maxDrawerWidth() {
+    // Declared widths, not measured rects — see the matching note in sidebar.js.
+    const panel = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-panel-w")) || 294;
+    const sidebar = document.getElementById("workspaceSidebar") ? panel + 46 : 0;
+    return Math.max(320, Math.min(720, window.innerWidth - sidebar - 340));
+  }
+
+  function clampDrawerWidth() {
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--ai-drawer-w"), 10) || 468;
+    const next = Math.min(current, maxDrawerWidth());
+    if (Math.abs(next - current) > 0.5) setDrawerWidth(next);
+  }
+
   function bindResize() {
     const handle = $("aiResizer");
     const drawer = $("aiDrawer");
-    let startX = 0, startW = 0;
+    let startX = 0, startW = 0, dragId = null;
     const onMove = (e) => {
-      const maxW = Math.max(320, Math.min(720, window.innerWidth - 360));
-      const next = Math.max(320, Math.min(maxW, startW + startX - e.clientX));
-      setDrawerWidth(next);
+      if (dragId !== null && e.pointerId !== dragId) return;
+      setDrawerWidth(Math.max(320, Math.min(maxDrawerWidth(), startW + startX - e.clientX)));
     };
-    const onUp = () => {
+    // Same hardening as the sidebar handle: capture the pointer, and end the drag
+    // on cancel/blur so a swallowed pointerup can never leave it armed.
+    const endDrag = (e) => {
+      if (dragId !== null && e?.pointerId !== undefined && e.pointerId !== dragId) return;
+      if (dragId !== null) { try { handle.releasePointerCapture?.(dragId); } catch { /* already released */ } }
+      dragId = null;
       drawer.classList.remove("resizing");
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      document.documentElement.classList.remove("is-resizing");
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", endDrag);
+      handle.removeEventListener("pointercancel", endDrag);
+      window.removeEventListener("blur", endDrag);
       saveSettings();
     };
     handle.addEventListener("pointerdown", (e) => {
       if (window.matchMedia("(max-width: 860px)").matches) return;
+      if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault();
+      dragId = e.pointerId;
       startX = e.clientX;
       startW = drawer.getBoundingClientRect().width;
       drawer.classList.add("resizing");
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      document.documentElement.classList.add("is-resizing");
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", endDrag);
+      handle.addEventListener("pointercancel", endDrag);
+      window.addEventListener("blur", endDrag);
+      try { handle.setPointerCapture?.(e.pointerId); } catch { /* capture is an optimisation */ }
     });
+    window.addEventListener("resize", clampDrawerWidth);
   }
   function setOpen(open) {
     aiOpen = !!open;
     $("aiDrawer").classList.toggle("hidden", !aiOpen);
     $("aiBtn").classList.toggle("active", aiOpen);
     document.querySelector(".main").classList.toggle("ai-open", aiOpen);
-    requestAnimationFrame(() => host.workspace.resize());
+    if (aiOpen) clampDrawerWidth();
+    // Opening the drawer changes how much room the sidebar may claim.
+    requestAnimationFrame(() => { window.eegSidebar?.reclamp?.(); host.workspace.resize(); });
     setTimeout(() => host.workspace.resize(), 180);
   }
   function setStatus(kind, text) {
@@ -441,13 +586,201 @@ export function initDrawerUI(host, handlers = {}) {
     scrollDown(true);
   }
 
+  // ---- context meter -------------------------------------------------------
+  // Mirrors the "how full is the window" readout of a desktop coding agent: a
+  // percentage with a bar, and a breakdown that explains WHY it is full (tool
+  // schemas and injected workspace state are re-sent every single turn, which is
+  // otherwise invisible and surprising).
+  let lastUsage = null;
+
+  function formatTokens(value) {
+    const number = Number(value) || 0;
+    if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}k`;
+    return String(Math.round(number));
+  }
+
+  function setContextUsage(usage) {
+    lastUsage = usage;
+    const meter = $("aiContextMeter");
+    const fill = $("aiContextFill");
+    const label = $("aiContextLabel");
+    if (!meter || !fill || !label) return;
+    if (!usage) {
+      meter.classList.add("hidden");
+      return;
+    }
+    meter.classList.remove("hidden");
+    meter.dataset.level = usage.level;
+    fill.style.width = `${Math.min(100, usage.percentUsed)}%`;
+    label.textContent = `${usage.percentUsed}%`;
+    meter.title = `Context ${usage.percentUsed}% used · ${formatTokens(usage.used)} of ${formatTokens(usage.usable)} usable tokens`;
+    meter.setAttribute("aria-label", meter.title);
+    renderContextPanel(usage);
+  }
+
+  // Where the window actually goes, largest slice first — the readout's job is to
+  // show that the fixed per-turn overhead (tool schemas, injected state) is often
+  // bigger than the conversation itself. One accent for the live part, neutrals
+  // for the rest: a five-colour chart would fight everything else in the drawer.
+  const CONTEXT_PARTS = [
+    { key: "conversation", label: "Conversation", tone: "live" },
+    { key: "images", label: "Signal images", tone: "images" },
+    { key: "tools", label: "Tool schemas", tone: "fixed" },
+    { key: "system", label: "System prompt", tone: "fixed-2" },
+    { key: "workspace", label: "Workspace state", tone: "fixed-3" },
+  ];
+
+  function renderContextPanel(usage) {
+    const panel = $("aiContextPanel");
+    if (!panel || panel.classList.contains("hidden")) return;
+    const parts = CONTEXT_PARTS
+      .map((part) => ({ ...part, value: usage.breakdown[part.key] || 0 }))
+      .filter((part) => part.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    // The bar shows the COMPOSITION of what is used, across the full width. Drawing
+    // it against the whole window instead would collapse into slivers whenever the
+    // context is mostly empty — exactly when a user opens this to understand it.
+    // "How full" is already the headline number and the meter in the head.
+    $("aiContextStack").innerHTML = parts.map((part) =>
+      `<i data-tone="${part.tone}" style="flex:${part.value}" title="${escapeHtml(part.label)}"></i>`).join("");
+
+    $("aiContextBreakdown").innerHTML = parts.map((part) =>
+      `<div class="ai-ctx-row">
+         <span class="ai-ctx-key" data-tone="${part.tone}"></span>
+         <span class="ai-ctx-name">${escapeHtml(part.label)}</span>
+         <b>${formatTokens(part.value)}</b>
+       </div>`).join("");
+
+    $("aiContextSummary").innerHTML = `<b>${usage.percentUsed}%</b>`
+      + `<span>${usage.shouldCompact
+        ? "over the threshold — the next step compacts first"
+        : `${formatTokens(usage.remaining)} free · ${usage.percentUntilCompact}% before auto-compact`}</span>`;
+    $("aiContextLimit").textContent =
+      `${formatTokens(usage.used)} of ${formatTokens(usage.usable)} usable · local estimate`;
+  }
+
+  function toggleContextPanel(force) {
+    const panel = $("aiContextPanel");
+    if (!panel) return;
+    const open = force ?? panel.classList.contains("hidden");
+    panel.classList.toggle("hidden", !open);
+    $("aiContextMeter")?.setAttribute("aria-expanded", String(open));
+    if (open && lastUsage) renderContextPanel(lastUsage);
+  }
+
+  // ---- compaction card -----------------------------------------------------
+  function beginCompaction(reason = "auto") {
+    clearEmpty();
+    const el = document.createElement("div");
+    el.className = "ai-compaction running";
+    el.innerHTML =
+      `<div class="ai-compaction-head">
+         <span class="ai-spinner"></span>
+         <b>Compacting context</b>
+         <span class="ai-compaction-reason"></span>
+       </div>
+       <p class="ai-compaction-body">Folding earlier steps into a handoff summary. Images are not carried over.</p>`;
+    el.querySelector(".ai-compaction-reason").textContent =
+      reason === "manual" ? "requested" : reason === "overflow" ? "window full" : "auto";
+    $("aiMessages").appendChild(el);
+    scrollDown(true);
+    return {
+      finish(note, summary) {
+        el.classList.remove("running");
+        el.classList.add("done");
+        renderCompactionCard(el, note, summary);
+        scrollDown();
+      },
+      fail(message) {
+        el.classList.remove("running");
+        el.classList.add("failed");
+        el.querySelector(".ai-compaction-head").innerHTML = `<b>Compaction failed</b>`;
+        el.querySelector(".ai-compaction-body").textContent = `${message} Continuing with the full transcript.`;
+      },
+      remove() { el.remove(); },
+    };
+  }
+
+  function renderCompactionCard(el, note, summary) {
+    el.innerHTML =
+      `<button class="ai-compaction-head" type="button">
+         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 12h6"/></svg>
+         <b>Context compacted</b>
+         <svg class="ai-tool-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+       </button>
+       <p class="ai-compaction-body"></p>
+       <div class="ai-compaction-summary md"></div>`;
+    el.querySelector(".ai-compaction-body").textContent = note || "";
+    el.querySelector(".ai-compaction-summary").innerHTML = renderMarkdown(summary || "");
+    el.querySelector(".ai-compaction-head").addEventListener("click", () => el.classList.toggle("open"));
+  }
+
+  function addCompletedCompaction(note, summary) {
+    clearEmpty();
+    const el = document.createElement("div");
+    el.className = "ai-compaction done";
+    renderCompactionCard(el, note, summary);
+    $("aiMessages").appendChild(el);
+  }
+
+  // ---- permission prompt ---------------------------------------------------
+  // The agent proposes a concrete side effect; the user decides. The promise
+  // resolves with the scope so the broker can remember a conversation-wide
+  // approval, and resolves to "deny" if the run is stopped while waiting.
+  function requestPermission({ capability, meta, request }, signal) {
+    clearEmpty();
+    return new Promise((resolve) => {
+      let settled = false;
+      const el = document.createElement("div");
+      el.className = "ai-permission";
+      el.dataset.risk = request?.risk || "normal";
+      el.innerHTML =
+        `<div class="ai-permission-head">
+           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.4 3.4 8.4 8 9 4.6-.6 8-4.6 8-9V6l-8-3Z"/></svg>
+           <b class="ai-permission-title"></b>
+           <span class="ai-permission-cap"></span>
+         </div>
+         <ul class="ai-permission-details"></ul>
+         <div class="ai-permission-actions">
+           <button type="button" data-choice="once">Allow once</button>
+           <button type="button" data-choice="conversation">Allow for this chat</button>
+           <button type="button" data-choice="deny">Deny</button>
+         </div>`;
+      el.querySelector(".ai-permission-title").textContent = request?.title || meta?.label || capability;
+      el.querySelector(".ai-permission-cap").textContent = meta?.label || capability;
+      const list = el.querySelector(".ai-permission-details");
+      for (const detail of request?.details || []) {
+        const item = document.createElement("li");
+        item.textContent = detail;
+        list.appendChild(item);
+      }
+      const settle = (choice) => {
+        if (settled) return;
+        settled = true;
+        el.classList.add("resolved");
+        el.dataset.choice = choice;
+        el.querySelector(".ai-permission-actions").innerHTML =
+          `<span class="ai-permission-outcome">${choice === "deny" ? "Denied" : choice === "conversation" ? "Allowed for this conversation" : "Allowed once"}</span>`;
+        resolve(choice);
+      };
+      el.querySelectorAll("[data-choice]").forEach((button) => {
+        button.addEventListener("click", () => settle(button.dataset.choice));
+      });
+      signal?.addEventListener?.("abort", () => settle("deny"), { once: true });
+      $("aiMessages").appendChild(el);
+      scrollDown(true);
+      setStatus("busy", "Waiting for your approval");
+    });
+  }
+
   function appendStepLimitNotice(maxTurns) {
     clearEmpty();
     const el = document.createElement("div");
     el.className = "ai-limit-card";
     el.innerHTML =
       `<b>Paused at step limit</b>
-       <p>EEG-Master used ${Number(maxTurns) || DEFAULT_MAX_TURNS} model step(s) and paused before starting another round. Continue keeps the same context and existing tool results.</p>
+       <p>${Number(maxTurns) || DEFAULT_MAX_TURNS} steps used. Continue keeps the same context.</p>
        <div class="ai-limit-actions">
          <button type="button" data-action="continue">Continue</button>
          <button type="button" data-action="config">Open Config</button>
@@ -472,6 +805,7 @@ export function initDrawerUI(host, handlers = {}) {
       if (item.kind === "user") appendUserMessage(item.text, item.attachments);
       else if (item.kind === "assistant") addAssistantMessage(item.text);
       else if (item.kind === "tool") addCompletedTool(item.name, item.args, item.outcome);
+      else if (item.kind === "compaction") addCompletedCompaction(item.text, item.summary);
       else if (item.kind === "note") appendNote(item.text);
       else if (item.kind === "error") appendError(item.text);
     }
@@ -530,6 +864,9 @@ export function initDrawerUI(host, handlers = {}) {
       maxTurns: cfg.maxTurns,
       maxAgentImages: cfg.maxAgentImages,
       maxImageWindowSec: cfg.maxImageWindowSec,
+      contextWindow: cfg.contextWindow,
+      autoCompact: cfg.autoCompact,
+      permissionMode: cfg.permissionMode,
       skills: cfg.skills,
       storage: "localStorage+IndexedDB+sessionStorage",
     };
@@ -544,6 +881,23 @@ export function initDrawerUI(host, handlers = {}) {
   $("aiMaxTurns").value = boundedInt(saved.maxTurns, DEFAULT_MAX_TURNS, MIN_MAX_TURNS, MAX_MAX_TURNS);
   $("aiMaxAgentImages").value = boundedInt(saved.maxAgentImages, DEFAULT_MAX_AGENT_IMAGES, MIN_AGENT_IMAGES, MAX_AGENT_IMAGES);
   $("aiMaxImageWindowSec").value = boundedInt(saved.maxImageWindowSec, DEFAULT_MAX_IMAGE_WINDOW_SEC, MIN_IMAGE_WINDOW_SEC, MAX_IMAGE_WINDOW_SEC);
+  if ($("aiContextWindow")) {
+    $("aiContextWindow").min = String(MIN_CONTEXT_WINDOW);
+    $("aiContextWindow").max = String(MAX_CONTEXT_WINDOW);
+    $("aiContextWindow").value = String(normalizeContextWindow(saved.contextWindow ?? DEFAULT_CONTEXT_WINDOW));
+  }
+  if ($("aiAutoCompact")) $("aiAutoCompact").checked = saved.autoCompact !== false;
+  // Only an explicit "manual" pins the value. Inferring it from the presence of a
+  // saved contextWindow would pin EVERY existing user forever — the field is
+  // written on every save, so detection could never take over.
+  contextSource = saved.contextWindowSource === "manual" ? "manual"
+    : (saved.contextWindowSource || "default");
+  renderContextSource();
+  if ($("aiPermissionMode")) {
+    $("aiPermissionMode").value = PERMISSION_MODES.includes(saved.permissionMode)
+      ? saved.permissionMode : DEFAULT_PERMISSION_MODE;
+  }
+  syncModeChip();
   skills.hydrate(saved.enabledSkills, Array.isArray(saved.enabledSkills));
   const savedModel = saved.model || DEFAULT_AI_MODEL;
   setModelSelection(LEGACY_DEFAULT_AI_MODELS.has(savedModel) ? DEFAULT_AI_MODEL : savedModel);
@@ -551,6 +905,7 @@ export function initDrawerUI(host, handlers = {}) {
   syncCustomField();
   const configured = !!(saved.baseUrl && saved.apiKey);
   setStatus(configured ? "ok" : "", configured ? "Ready" : "Not connected");
+  syncBar();
   if (Number.isFinite(Number(saved.fabLeft)) && Number.isFinite(Number(saved.fabTop))) {
     requestAnimationFrame(() => setFabPosition(saved.fabLeft, saved.fabTop));
   }
@@ -578,8 +933,30 @@ export function initDrawerUI(host, handlers = {}) {
     saveSettings();
     syncConfigStatus();
   });
-  $("aiModelSelect").addEventListener("change", () => { syncCustomField(); saveSettings(); });
+  $("aiModelSelect").addEventListener("change", () => {
+    syncCustomField();
+    applyDetectedContextWindow();
+    saveSettings();
+  });
   $("aiCustomModel").addEventListener("input", saveSettings);
+  $("aiContextWindow")?.addEventListener("change", () => {
+    contextSource = "manual";
+    renderContextSource();
+    saveSettings();
+    handlers.onContextSettingsChange?.();
+  });
+  $("aiAutoCompact")?.addEventListener("change", () => saveSettings());
+  $("aiPermissionSeg")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-value]");
+    if (button) setPermissionMode(button.dataset.value);
+  });
+  $("aiModeChip")?.addEventListener("click", cycleMode);
+  $("aiModelChip")?.addEventListener("click", () => setConfigOpen(true));
+  $("aiSkillsChip")?.addEventListener("click", () => setConfigOpen(true));
+  $("aiContextMeter")?.addEventListener("click", () => toggleContextPanel());
+  $("aiContextClose")?.addEventListener("click", () => toggleContextPanel(false));
+  $("aiContextCompactBtn")?.addEventListener("click", () => { toggleContextPanel(false); handlers.onCompact?.(); });
+  $("aiContextConfigBtn")?.addEventListener("click", () => { toggleContextPanel(false); setConfigOpen(true); });
   ["aiMaxTurns", "aiMaxAgentImages", "aiMaxImageWindowSec"].forEach((id) => {
     $(id)?.addEventListener("input", saveSettings);
     $(id)?.addEventListener("change", () => {
@@ -668,7 +1045,8 @@ export function initDrawerUI(host, handlers = {}) {
     renderConversation, renderHistory, closeHistory, focusInput,
     appendStepLimitNotice, renderAttachments: renderComposerAttachments,
     setBusy, setStatus, setOpen, saveSettings, getConfig, getPublicConfig,
-    refreshSkills: (options) => skills.load(options),
+    setContextUsage, beginCompaction, requestPermission, learnContextWindow,
+    refreshSkills: async (options) => { const r = await skills.load(options); syncSkillsChip(); return r; },
     clearInput: () => { $("aiInput").value = ""; },
   };
 }

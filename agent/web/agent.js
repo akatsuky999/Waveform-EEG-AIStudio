@@ -10,6 +10,9 @@ import { streamAICompletion, extractAgentProtocol } from "./stream.js";
 import { runToolCall, executeEEGActions } from "./tools.js";
 import { deriveActionPolicy } from "./intent-policy.js";
 import { getToolDefinition } from "./tool-definitions.js";
+import { contextUsage, isContextOverflowError, parseContextLimitFromError } from "./context-budget.js";
+import { applyCompaction, buildCompactionMessages, compactionNote, splitForCompaction } from "./compaction.js";
+import { createPermissionBroker } from "./permissions.js";
 import {
   createConversation, getConversation, saveConversation, deleteConversation,
   renameConversation, listConversations, getActiveId, setActiveId, titleFromText,
@@ -51,6 +54,15 @@ export function initAgent(host) {
   // IndexedDB so the backend scratch cache can be rebuilt after a hot reload.
   const attachmentsByConv = new Map();  // convId -> [{ id?, name, kind, sizeBytes, status, sent, error }]
   let attachmentUploadQueue = Promise.resolve();
+  // "Allow for this conversation" grants live here, so they survive between runs
+  // but never leak into another conversation.
+  const grantsByConv = new Map();       // convId -> Map(capability -> "conversation")
+
+  function grantsFor(id = conv?.id) {
+    if (!id) return new Map();
+    if (!grantsByConv.has(id)) grantsByConv.set(id, new Map());
+    return grantsByConv.get(id);
+  }
 
   const ui = initDrawerUI(host, {
     onSend: sendAIMessage,
@@ -64,8 +76,27 @@ export function initAgent(host) {
     onOpenConfig: () => host.openAgentSettings?.(),
     onAttachFiles: attachFiles,
     onRemoveAttachment: removeAttachment,
+    onCompact: () => compactNow(),
   });
   host.getAgentConfiguration = () => ui.getPublicConfig();
+
+  // ---- context budget ----
+  function usageFor(target = conv, config = ui.getConfig()) {
+    if (!target) return null;
+    return contextUsage({
+      transcript: contextMessages(target.transcript || []).slice(1),  // minus the system message
+      systemPrompt: EEG_MASTER_SYSTEM_PROMPT,
+      tools: EEG_TOOLS,
+      injectedContext: modelContext(config),
+      contextWindow: config.contextWindow,
+    });
+  }
+
+  function refreshUsage(target = conv) {
+    const usage = target ? usageFor(target) : null;
+    if (target === conv) ui.setContextUsage(usage);
+    return usage;
+  }
 
   // ---- companion-file attachments ----
   function conversationAttachments(id = conv?.id) {
@@ -229,6 +260,7 @@ export function initAgent(host) {
     await prunePersistentAttachments(listConversations().map((item) => item.id)).catch(() => {});
     await syncAttachments();
     refreshHistory();
+    refreshUsage();
   }
 
   function persist(target = conv) {
@@ -247,6 +279,7 @@ export function initAgent(host) {
     ui.resetMessages();
     syncAttachments({ restore: false }).catch(() => {});
     refreshHistory();
+    refreshUsage();
     ui.closeHistory();
     ui.focusInput();
   }
@@ -261,6 +294,7 @@ export function initAgent(host) {
     ui.renderConversation(conv.log);
     await syncAttachments();
     refreshHistory();
+    refreshUsage();
     ui.closeHistory();
   }
 
@@ -336,6 +370,62 @@ export function initAgent(host) {
     await runAgentLoop(runConv, actionPolicy, config);
   }
 
+  // ---- compaction ----
+  // Summarise the older half of the run into a structured handoff so the task can
+  // keep going past the context window. Returns true when the transcript shrank.
+  async function compactConversation(runConv, config, signal, { reason = "auto" } = {}) {
+    const before = usageFor(runConv, config);
+    const { head } = splitForCompaction(runConv.transcript || []);
+    if (!head.length) return false;
+    ui.setStatus("busy", "Compacting context…");
+    const card = ui.beginCompaction(reason);
+    try {
+      const stream = await streamAICompletion({
+        baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model,
+        messages: buildCompactionMessages(head),
+      }, () => {}, signal);
+      const summary = (stream.text || "").trim();
+      if (!summary) throw new Error("The model returned an empty summary.");
+      const result = applyCompaction(runConv.transcript, summary);
+      if (!result.compacted) throw new Error("Nothing could be compacted.");
+      runConv.transcript = result.transcript;
+      runConv.compactions = (runConv.compactions || 0) + 1;
+      const after = usageFor(runConv, config);
+      const note = compactionNote(result, before, after);
+      card.finish(note, summary);
+      runConv.log.push({ kind: "compaction", text: note, summary });
+      persist(runConv);
+      if (runConv === conv) ui.setContextUsage(after);
+      return true;
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") { card.remove(); throw error; }
+      card.fail(error.message || "Compaction failed.");
+      return false;
+    }
+  }
+
+  // Manual "Compact" button: only meaningful between runs.
+  async function compactNow() {
+    if (busy || !conv?.transcript?.length) {
+      ui.appendNote(busy ? "Compaction waits until the current run finishes." : "Nothing to compact yet.");
+      return;
+    }
+    const config = checkedConfig();
+    if (!config) return;
+    const runController = new AbortController();
+    controller = runController;
+    busy = true; ui.setBusy(true);
+    try {
+      const done = await compactConversation(conv, config, runController.signal, { reason: "manual" });
+      ui.setStatus("ok", done ? "Compacted" : "Ready");
+    } catch (error) {
+      if (error?.name !== "AbortError") ui.appendError(error.message || "Compaction failed");
+    } finally {
+      busy = false; ui.setBusy(false); controller = null;
+      refreshUsage();
+    }
+  }
+
   async function runAgentLoop(runConv, actionPolicy, config) {
     const { baseUrl, apiKey, model } = config;
     const maxTurns = Math.max(4, Math.min(64, parseInt(config.maxTurns, 10) || DEFAULT_MAX_TURNS));
@@ -343,6 +433,25 @@ export function initAgent(host) {
     controller = runController;
     const signal = runController.signal;
     host.attachments.setConversation(runConv.id);
+    // Side-effect authorization for this run: standing conversation grants, the
+    // per-turn intent read, and — when neither settles it — a prompt the user
+    // answers in the timeline.
+    const broker = createPermissionBroker({
+      mode: config.permissionMode,
+      intent: actionPolicy,
+      grants: grantsFor(runConv.id),
+      isAborted: () => signal.aborted,
+      requestDecision: (payload) => ui.requestPermission(payload, signal),
+      onDecision: (entry) => {
+        if (entry.source === "user-prompt" || entry.source === "user-denied") {
+          runConv.log.push({
+            kind: "note",
+            text: `${entry.granted ? "Approved" : "Denied"}: ${entry.proposal?.title || entry.capability}${entry.scope === "conversation" ? " (allowed for this conversation)" : ""}`,
+          });
+        }
+      },
+    });
+    const policy = { ...actionPolicy, broker };
     busy = true; ui.setBusy(true);
 
     let emptyStreak = 0;
@@ -351,10 +460,20 @@ export function initAgent(host) {
       await ensureBackendAttachments(runConv.id, signal);
       for (let turn = 0; turn < maxTurns; turn++) {
         if (signal.aborted) break;
+
+        // Compact BEFORE the request, not after a provider rejects it: an
+        // overflow mid-run would otherwise lose the whole investigation.
+        const usage = usageFor(runConv, config);
+        if (runConv === conv) ui.setContextUsage(usage);
+        if (usage?.shouldCompact && config.autoCompact !== false) {
+          await compactConversation(runConv, config, signal, { reason: "auto" });
+          if (signal.aborted) break;
+        }
         ui.setStatus("busy", `Working · step ${turn + 1}/${maxTurns}`);
 
         const bubble = ui.beginAssistant();
         let stream;
+        let compactedForOverflow = false;
         for (let attempt = 0; ; attempt++) {
           try {
             stream = await streamAICompletion({
@@ -366,6 +485,22 @@ export function initAgent(host) {
             break;
           } catch (err) {
             if (signal.aborted || err?.name === "AbortError") throw err;
+            // The local estimate can read low for an unknown tokenizer. If the
+            // provider says the prompt is too long, compact once and retry
+            // instead of failing the run.
+            if (!compactedForOverflow && isContextOverflowError(err?.message)) {
+              compactedForOverflow = true;
+              // The rejection usually states the real limit. That number beats any
+              // local guess, so adopt it before compacting — the next turn is then
+              // measured against what this provider actually enforces.
+              const declared = parseContextLimitFromError(err?.message);
+              if (declared && ui.learnContextWindow(declared)) {
+                config.contextWindow = declared;
+                ui.appendNote(`Provider reports a ${Math.round(declared / 1000)}k context window — using it from now on.`);
+              }
+              bubble.update("Context window full — compacting the earlier steps…");
+              if (await compactConversation(runConv, config, signal, { reason: "overflow" })) continue;
+            }
             if (attempt >= MAX_STREAM_RETRIES || !isTransientError(err)) throw err;
             bubble.update(`网络中断，正在重试 (${attempt + 1}/${MAX_STREAM_RETRIES})…`);
             await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
@@ -385,6 +520,8 @@ export function initAgent(host) {
             }));
           }
           if (parsed.actions.length) {
+            // Legacy text actions keep the synchronous intent gate: they cannot
+            // await a permission prompt, so they stay on the conservative path.
             const notes = executeEEGActions(host, parsed.actions, actionPolicy);
             if (notes.length) {
               if (conv === runConv) ui.appendNote(`Applied: ${notes.join(", ")}`);
@@ -419,8 +556,8 @@ export function initAgent(host) {
               await ensureBackendAttachments(runConv.id, signal);
             }
             const outcomes = safe
-              ? await Promise.all(group.map((call) => runToolCall(host, call, signal, actionPolicy)))
-              : [await runToolCall(host, group[0], signal, actionPolicy)];
+              ? await Promise.all(group.map((call) => runToolCall(host, call, signal, policy)))
+              : [await runToolCall(host, group[0], signal, policy)];
             const refreshes = [];
             outcomes.forEach((outcome, index) => {
               const call = group[index];
@@ -500,6 +637,7 @@ export function initAgent(host) {
         if (conv !== runConv) ui.setStatus("ok", "Ready");
         controller = null;
       }
+      refreshUsage();
     }
   }
 
@@ -583,16 +721,61 @@ function toolMayNeedAttachments(name) {
     || name === "run_python";
 }
 
-// Keep tool_call/tool pairing valid when trimming: start the window at a user turn.
-function contextMessages(transcript) {
-  let msgs = transcript;
-  if (msgs.length > CONTEXT_WINDOW) {
-    msgs = msgs.slice(-CONTEXT_WINDOW);
-    let i = 0;
-    while (i < msgs.length && msgs[i].role !== "user") i++;
-    msgs = i < msgs.length ? msgs.slice(i) : [];
+// Drop messages that would make the request invalid for the provider:
+//   • a role:"tool" result whose assistant tool_calls parent is not present
+//     (created by trimming, or by a conversation reloaded from a sliced save);
+//   • an assistant tool_calls message whose results never arrived (a run that
+//     was aborted or errored between issuing the calls and recording them).
+// Both are hard 400s upstream ("tool messages must respond to tool_calls"), so
+// they would otherwise brick every later turn of that conversation.
+export function sanitizeTranscript(messages) {
+  const out = [];
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    if (message?.role === "tool") {
+      const parent = out[out.length - 1];
+      const parentIds = parent?.role === "assistant" && Array.isArray(parent.tool_calls)
+        ? parent.tool_calls.map((call) => call?.id)
+        : null;
+      const answered = out.length && (parentIds?.includes(message.tool_call_id) || out[out.length - 1]?.role === "tool");
+      if (!answered) continue;                    // orphan result → drop
+      out.push(message);
+      continue;
+    }
+    if (message?.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      const answeredIds = new Set();
+      for (let j = i + 1; j < messages.length && messages[j]?.role === "tool"; j++) {
+        answeredIds.add(messages[j].tool_call_id);
+      }
+      if (!message.tool_calls.every((call) => answeredIds.has(call?.id))) {
+        // Keep any prose the model produced, drop the unanswered call block.
+        if (typeof message.content === "string" && message.content.trim()) {
+          out.push({ role: "assistant", content: message.content });
+        }
+        while (i + 1 < messages.length && messages[i + 1]?.role === "tool") i++;  // and its partial results
+        continue;
+      }
+    }
+    out.push(message);
   }
-  return [{ role: "system", content: EEG_MASTER_SYSTEM_PROMPT }, ...msgs];
+  return out;
+}
+
+// Trim to the recent window WITHOUT losing the task. The old rule ("start at the
+// first user message") silently emptied the whole context on tool-heavy runs:
+// one turn can add 1 assistant + 8 tool messages, so after ~8 turns the window
+// held no user message at all and the model was sent nothing but the system
+// prompt. Now the first user message is always kept as an anchor and the tail is
+// repaired instead of discarded.
+export function contextMessages(transcript) {
+  const system = { role: "system", content: EEG_MASTER_SYSTEM_PROMPT };
+  const messages = sanitizeTranscript(transcript || []);
+  if (messages.length <= CONTEXT_WINDOW) return [system, ...messages];
+  const anchorIndex = messages.findIndex((message) => message.role === "user");
+  const start = messages.length - CONTEXT_WINDOW;
+  const tail = sanitizeTranscript(messages.slice(start));
+  const anchor = anchorIndex >= 0 && anchorIndex < start ? [messages[anchorIndex]] : [];
+  return [system, ...anchor, ...tail];
 }
 
 function assistantToolCallMessage(calls, text) {

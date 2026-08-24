@@ -46,76 +46,140 @@
 /* Provider is the anchor module — a hair more warmth once it takes sheet form */
 .ws-provider:not(.collapsed) { background: linear-gradient(180deg, #fffdf8 0%, #fbf9f2 100%); }
 
-/* ---- fields ---- */
-.agent-settings-scroll .ai-field { gap: 6px; }
-.agent-settings-scroll .ai-field.full + .ai-field.full,
-.agent-settings-scroll .ai-field.full + .ai-field-row { margin-top: 12px; }
-.agent-settings-scroll .ai-field label {
-  font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
-  color: #8f8a7b;
+/* ---- settings rows ----
+   Label left, control right, hairline between: the layout used by Cursor /
+   Linear / Codex settings. Stacked uppercase labels over 36px inputs made three
+   fields fill a screen; these read as a dense spec sheet instead of a web form. */
+.ai-rows { display: flex; flex-direction: column; }
+.ai-row {
+  display: flex; align-items: center; gap: 12px; min-height: 34px;
+  padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 62%, transparent);
 }
-.agent-settings-scroll .ai-field input,
-.agent-settings-scroll .ai-field select,
-.agent-settings-scroll .cs-trigger {
-  border: 1px solid #e4dfcf; border-radius: 9px; background: #fff;
-  min-height: 36px; padding: 8px 10px; font: 500 12.5px var(--sans);
+.ai-row:last-child { border-bottom: 0; }
+.ai-row.hidden { display: none; }
+/* The label yields first: it can ellipsis, a value never may. That is why the
+   unit sits INSIDE .ai-value — as a sibling it was the flex item that got pushed
+   past the card edge when the sidebar was narrow ("tok" escaping the panel). */
+.ai-row > label {
+  flex: 1 1 auto; min-width: 0;
+  font: 450 11.5px var(--sans); color: var(--ink-soft); letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* connection strings read as data → mono */
+.ai-row > input,
+.ai-row > select,
+.ai-row > .cs-wrap {
+  flex: 0 1 auto; min-width: 0; max-width: 62%; margin-left: auto;
+}
+.ai-row > .ai-value {
+  flex: 0 0 auto; margin-left: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.ai-row > .ai-value .ai-unit {
+  flex: 0 0 auto; font: normal 10px var(--mono); color: var(--muted);
+}
+
+/* label above, control below at full width — for controls that need the room */
+.ai-row.ai-row-stack {
+  display: block; padding: 9px 0 10px;
+}
+.ai-row.ai-row-stack > label { display: block; margin-bottom: 7px; }
+
+/* controls sit flush right and only draw a border once you touch them */
+.agent-settings-scroll .ai-row input,
+.agent-settings-scroll .ai-row select,
+.agent-settings-scroll .ai-row .cs-trigger {
+  min-height: 28px; height: 28px; padding: 0 9px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
+  font: 450 11.5px var(--sans); color: var(--ink); text-align: right;
+  transition: background .12s, border-color .12s;
+}
+.agent-settings-scroll .ai-row .cs-trigger { text-align: right; justify-content: flex-end; gap: 6px; }
+.agent-settings-scroll .ai-row input:hover,
+.agent-settings-scroll .ai-row .cs-trigger:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.agent-settings-scroll .ai-row input:focus,
+.agent-settings-scroll .ai-row select:focus,
+.agent-settings-scroll .ai-row .cs-trigger:focus {
+  outline: none; background: var(--paper);
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+}
+.agent-settings-scroll .ai-row input::placeholder { color: var(--muted); }
+
+/* connection strings and ids are data → mono */
 .agent-settings-scroll #aiBaseUrl,
 .agent-settings-scroll #aiApiKey,
 .agent-settings-scroll #aiCustomModel {
-  font-family: var(--mono); font-size: 11.5px; letter-spacing: -.01em;
-}
-.agent-settings-scroll .ai-field input:focus,
-.agent-settings-scroll .ai-field select:focus {
-  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(199, 95, 62, .1); outline: none;
+  font-family: var(--mono); font-size: 11px; letter-spacing: -.01em;
 }
 
-/* runtime module: three mono steppers side by side */
-.ai-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.ai-metric-grid .ai-field label {
+/* numeric steppers: fixed width so the column of values aligns */
+.agent-settings-scroll .ai-value input.ai-num {
+  flex: 0 1 auto; width: 62px; min-width: 44px; margin: 0;
+  font-family: var(--mono); font-size: 11.5px; text-align: right;
+}
+.agent-settings-scroll .ai-value input.ai-num.wide { width: 84px; min-width: 62px; }
+.agent-settings-scroll .ai-row input[type=number]::-webkit-inner-spin-button { opacity: .25; }
+
+/* switch */
+.agent-settings-scroll input.ai-switch {
+  flex: 0 0 auto; appearance: none; -webkit-appearance: none;
+  width: 30px; height: 18px; min-height: 0; margin-left: auto; padding: 0;
+  border: 0; border-radius: 99px; background: color-mix(in srgb, var(--ink) 14%, transparent);
+  position: relative; cursor: pointer; transition: background .16s ease;
+}
+.agent-settings-scroll input.ai-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--paper); box-shadow: 0 1px 2px rgba(29,27,22,.22);
+  transition: transform .16s cubic-bezier(.33,0,.2,1);
+}
+.agent-settings-scroll input.ai-switch:checked { background: var(--accent); }
+.agent-settings-scroll input.ai-switch:checked::after { transform: translateX(12px); }
+.agent-settings-scroll input.ai-switch:focus-visible { outline: 2px solid rgba(199,95,62,.35); outline-offset: 2px; }
+
+/* segmented control — three states worth seeing at once, not hidden in a menu */
+.ai-seg {
+  display: flex; width: 100%; padding: 2px;
+  border-radius: 8px; background: color-mix(in srgb, var(--ink) 4.5%, transparent);
+}
+.ai-seg button {
+  flex: 1 1 0; min-width: 0; height: 24px; padding: 0 6px;
+  border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+  color: var(--ink-soft); font: 500 10.5px var(--sans);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background .13s, color .13s, box-shadow .13s;
 }
-.ai-metric-grid .ai-field input {
-  font-family: var(--mono); font-size: 13px; font-weight: 500; text-align: center;
-  padding: 8px 4px;
+.ai-seg button:hover { color: var(--ink); }
+.ai-seg button[aria-pressed="true"] {
+  background: var(--paper); color: var(--ink);
+  box-shadow: 0 1px 2px rgba(29,27,22,.07);
 }
+.ai-seg button[data-value="readonly"][aria-pressed="true"] { color: #3f6b4c; }
+.ai-seg button[data-value="trusted"][aria-pressed="true"] { color: #8a6418; }
 
-/* Test-models action row */
-.agent-settings-scroll .ai-actions-row {
-  display: flex; align-items: center; gap: 10px; margin-top: 13px;
-}
-.agent-settings-scroll .ai-actions-row .wide-btn {
-  width: auto; margin: 0; padding: 7px 12px;
-  border: 1px solid #e4dfcf; border-radius: 9px; font-size: 11px; font-weight: 600;
-}
-.agent-settings-scroll .ai-actions-row span {
-  min-width: 0; flex: 1 1 auto; font-size: 10.5px; line-height: 1.35;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft);
+/* the action row carries the connection message + its one button */
+.ai-row.ai-row-action { border-bottom: 0; padding-top: 10px; gap: 8px; }
+.ai-row-action span {
+  flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #aiConfigMsg[data-kind="ok"] { color: var(--ok-ink); }
 #aiConfigMsg[data-kind="err"] { color: var(--accent-ink); }
 
 /* ---- skills module ---- */
-.ai-skill-toolbar { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+.ai-skill-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
 .ai-skill-toolbar .ai-skill-search {
-  flex: 1 1 auto; min-width: 0; margin: 0; min-height: 34px;
-  border: 1px solid #e4dfcf; border-radius: 9px; background: #fff;
-  padding: 7px 11px; font: 500 12px var(--sans); color: var(--ink); outline: none;
+  flex: 1 1 auto; min-width: 0; margin: 0; height: 28px; min-height: 28px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
+  padding: 0 9px; font: 450 11.5px var(--sans); color: var(--ink); outline: none;
+  transition: background .12s, border-color .12s;
 }
-.ai-skill-toolbar .ai-skill-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(199, 95, 62, .1); }
-.ai-skill-toolbar .ai-mini-action { flex: 0 0 auto; min-height: 34px; }
-
-.ai-mini-action {
-  display: inline-flex; align-items: center; gap: 5px;
-  border: 1px solid #e4dfcf; border-radius: 9px; padding: 6px 9px;
-  background: #fff; color: var(--ink-soft); font: 600 10.5px var(--sans);
-  cursor: pointer; transition: border-color .12s, color .12s, transform .04s;
+.ai-skill-toolbar .ai-skill-search:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.ai-skill-toolbar .ai-skill-search:focus {
+  background: var(--paper); border-color: color-mix(in srgb, var(--accent) 52%, transparent);
 }
-.ai-mini-action.icon-only { width: 34px; justify-content: center; padding: 0; }
-.ai-mini-action svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
-.ai-mini-action:hover { color: var(--accent-ink); border-color: #ddb5a4; }
-.ai-mini-action:active { transform: translateY(1px); }
+.ai-skill-toolbar .ai-btn { flex: 0 0 auto; }
 
 .ai-skill-list { display: flex; flex-direction: column; gap: 7px; }
 .ai-skill-empty {
@@ -223,4 +287,21 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-thinking-line::before, .ai-thinking-text { animation: none; }
+}
+
+/* runtime: context window + permission mode */
+.agent-settings-scroll .ai-field-hint {
+  margin: 0; font-size: 10.5px; line-height: 1.45; color: var(--ink-soft); opacity: .85;
+}
+.agent-settings-scroll .ai-check-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px;
+  font-size: 11.5px; color: var(--ink); cursor: pointer;
+}
+.agent-settings-scroll .ai-check-row input { accent-color: var(--accent); }
+.agent-settings-scroll .ai-metric-grid + .ai-field.full { margin-top: 12px; }
+
+/* where the context window came from — a whisper, not a field */
+.agent-settings-scroll .ai-row > label .ai-src {
+  margin-left: 6px; font: normal 9.5px var(--mono); font-style: normal;
+  color: var(--muted); opacity: .9;
 }

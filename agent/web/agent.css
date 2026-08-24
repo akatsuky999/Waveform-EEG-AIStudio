@@ -31,11 +31,11 @@
 .ai-head-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .ai-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border-radius: 8px; flex: 0 0 auto;
-  border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); cursor: pointer;
-  transition: border-color .12s, color .12s, background .12s;
+  width: 28px; height: 28px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft); cursor: pointer;
+  transition: color .13s, background .13s;
 }
-.ai-icon-btn:hover { color: var(--accent-ink); border-color: var(--muted); background: var(--panel); }
+.ai-icon-btn:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5.5%, transparent); }
 
 /* export format picker (popover anchored to the export icon button) */
 .ai-export-wrap { position: relative; display: inline-flex; }
@@ -95,11 +95,12 @@
 .ai-status.paused::before { background: var(--warn); }
 @keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 .ai-config-toggle {
-  border: 1px solid var(--line); border-radius: 999px; background: var(--paper);
-  color: var(--ink-soft); cursor: pointer; font-family: var(--mono); font-size: 10.5px;
-  padding: 5px 8px; transition: border-color .12s, color .12s;
+  height: 28px; padding: 0 11px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft); cursor: pointer;
+  font: 500 11.5px var(--sans); line-height: 1;
+  transition: color .13s, background .13s;
 }
-.ai-config-toggle:hover, .ai-config-toggle.active { color: var(--accent-ink); border-color: var(--muted); }
+.ai-config-toggle:hover, .ai-config-toggle.active { color: var(--ink); background: color-mix(in srgb, var(--ink) 5.5%, transparent); }
 
 .ai-settings-card {
   display: flex; flex-direction: column; gap: 9px;
@@ -311,13 +312,13 @@
 .ai-limit-card p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
 .ai-limit-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .ai-limit-actions button {
-  border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px;
-  background: var(--paper); color: var(--ink); font: inherit; font-size: 11.5px;
-  font-weight: 600; cursor: pointer;
+  height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--paper); color: var(--ink-soft); font: 500 11.5px var(--sans); cursor: pointer;
+  transition: color .13s, border-color .13s, background .13s;
 }
 .ai-limit-actions button:first-child { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.ai-limit-actions button:hover { border-color: var(--accent); color: var(--accent-ink); }
-.ai-limit-actions button:first-child:hover { color: var(--bg); filter: brightness(1.08); }
+.ai-limit-actions button:hover { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: rgba(199,95,62,.05); }
+.ai-limit-actions button:first-child:hover { color: var(--bg); background: var(--ink); border-color: var(--ink); filter: brightness(1.14); }
 
 /* jump-to-latest pill (between messages and composer, shown when scrolled up) */
 .ai-jump {
@@ -421,10 +422,12 @@
 .ai-note-line { margin-top: 7px; font-size: 11px; color: var(--accent-ink); }
 
 .ai-composer { position: relative; padding-top: 10px; border-top: 1px solid var(--line); flex: 0 0 auto; }
-/* framed composer: one focusable surface holding the textarea + send row */
+/* The input is one quiet surface; every control lives on the strip BELOW it, so
+   the writing area stays uncluttered and the agent's state (mode, model, context)
+   reads as one line of instrument chrome. */
 .ai-composer-box {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 4px 8px 8px; border: 1px solid var(--line); border-radius: 13px;
+  position: relative; display: flex; flex-direction: column;
+  padding: 4px 40px 4px 8px; border: 1px solid var(--line); border-radius: 13px;
   background: var(--paper); box-shadow: 0 1px 2px rgba(29,27,22,.03);
   transition: border-color .13s, box-shadow .13s;
 }
@@ -465,17 +468,6 @@
 .ai-msg-file .ai-attach-name { color: inherit; }
 .ai-msg-file .ai-attach-meta { color: rgba(255,255,255,.72); }
 
-/* paperclip attach button, sits at the left of the send row */
-.ai-attach-btn {
-  flex: 0 0 auto; width: 30px; height: 30px; margin-right: auto;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); border-radius: 8px; background: var(--paper);
-  color: var(--ink-soft); cursor: pointer; transition: border-color .12s, color .12s, background .12s, transform .04s;
-}
-.ai-attach-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
-.ai-attach-btn:active { transform: translateY(1px); }
-.ai-attach-btn svg { width: 16px; height: 16px; }
-.ai-attach-btn + .ai-composer-hint { margin-right: auto; }
 
 /* drag-to-attach overlay on the whole drawer */
 .ai-drop-hint {
@@ -489,18 +481,70 @@
 .ai-drop-hint svg { width: 20px; height: 20px; }
 .ai-drawer.dropping .ai-drop-hint { display: flex; }
 .ai-composer textarea {
-  min-height: 64px; max-height: 180px; resize: none; padding: 8px 6px 2px;
+  min-height: 58px; max-height: 180px; resize: none; padding: 8px 2px 6px;
   line-height: 1.45; border: 0; background: transparent;
 }
 .ai-composer textarea:focus { border: 0; box-shadow: none; }
-/* flex-end keeps Send the same size whether or not Stop is visible
-   (the old 1fr/auto grid made both buttons jump width when streaming started) */
-.ai-send-row { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
-.ai-composer-hint { margin-right: auto; color: var(--muted); font: 10px var(--mono); user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ai-composer-hint kbd {
-  font: inherit; color: var(--ink-soft); background: var(--panel);
-  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px;
+
+/* send / stop: a single glyph at the trailing edge of the input */
+.ai-send {
+  position: absolute; right: 7px; bottom: 7px;
+  width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer;
+  transition: color .12s, background .12s;
 }
+.ai-send svg { width: 16px; height: 16px; }
+.ai-send:hover { color: var(--accent-ink); background: rgba(199,95,62,.09); }
+.ai-composer-box:focus-within .ai-send { color: var(--ink-soft); }
+.ai-composer-box:focus-within .ai-send:hover { color: var(--accent-ink); }
+.ai-send.hidden { display: none; }
+.ai-send.ai-stop { color: var(--accent-ink); }
+.ai-send.ai-stop svg { width: 13px; height: 13px; }
+
+/* ---- control strip under the composer ---- */
+.ai-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 3px 1px; min-height: 26px;
+}
+.ai-bar-end { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+/* permission mode — the strip's one coloured element, because it is the only
+   control here that changes what the agent is allowed to do */
+.ai-mode {
+  flex: 0 0 auto; height: 24px; padding: 0 10px; border: 0; border-radius: 7px; cursor: pointer;
+  background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink);
+  font: 500 11px/1 var(--sans); letter-spacing: .01em;
+  transition: background .13s, color .13s;
+}
+.ai-mode:hover { background: rgba(29,27,22,.09); color: var(--ink); }
+.ai-mode[data-mode="readonly"] { background: rgba(76,124,89,.13); color: #3f6b4c; }
+.ai-mode[data-mode="trusted"] { background: rgba(214,168,90,.20); color: #8a6418; }
+
+.ai-bar-icon {
+  position: relative; flex: 0 0 auto;
+  width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer;
+  transition: color .12s, background .12s;
+}
+.ai-bar-icon svg { width: 16px; height: 16px; stroke-width: 1.85; }
+.ai-bar-icon:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.ai-bar-icon.active { color: var(--accent-ink); }
+.ai-bar-count {
+  position: absolute; top: 1px; right: 0; min-width: 12px; height: 12px; padding: 0 2px;
+  display: none; align-items: center; justify-content: center; border-radius: 99px;
+  background: var(--accent); color: var(--bg); font: 500 8px/1 var(--mono);
+}
+.ai-bar-count.show { display: inline-flex; }
+
+.ai-bar-model {
+  min-width: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 7px;
+  background: none; cursor: pointer;
+  color: var(--ink-soft); font: 400 11px/1 var(--mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color .12s;
+}
+.ai-bar-model:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.ai-bar :focus-visible { outline: 2px solid rgba(199,95,62,.32); outline-offset: 1px; }
 .ai-send-row .wide-btn { margin-top: 0; }
 .ai-send-row .btn { padding: 7px 16px; font-size: 13px; }
 .ai-send-row .btn.hidden { display: none; }
@@ -527,5 +571,207 @@
   .ai-field { grid-column: 1 / -1; }
   .ai-head { align-items: flex-start; }
   .ai-head-actions { flex-direction: column-reverse; align-items: flex-end; gap: 6px; }
-  .ai-composer-hint { display: none; }
 }
+
+
+/* ---- one button system for the whole agent surface ----
+   Three variants only: quiet (default), primary (one per view), icon. Uniform
+   26px height, 7px radius, 1.7 stroke. Before this, the drawer head, the config
+   panel, the skill toolbar and every card each invented their own pill. */
+.ai-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 28px; padding: 0 11px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+  font: 500 11.5px var(--sans); line-height: 1; cursor: pointer; white-space: nowrap;
+  transition: color .13s, border-color .13s, background .13s;
+}
+.ai-btn:hover {
+  color: var(--accent-ink);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: rgba(199,95,62,.05);
+}
+.ai-btn:active { transform: translateY(.5px); }
+.ai-btn:disabled { opacity: .45; cursor: default; }
+.ai-btn:disabled:hover { color: var(--ink-soft); border-color: var(--line); background: var(--paper); }
+.ai-btn.primary { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.ai-btn.primary:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); filter: brightness(1.14); }
+.ai-btn.quiet { border-color: transparent; background: transparent; }
+.ai-btn.quiet:hover { background: color-mix(in srgb, var(--ink) 5.5%, transparent); color: var(--ink); }
+.ai-btn.icon { width: 28px; padding: 0; }
+.ai-btn svg {
+  width: 14px; height: 14px; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 1.85; stroke-linecap: round; stroke-linejoin: round;
+}
+.ai-btn:focus-visible { outline: 2px solid rgba(199,95,62,.34); outline-offset: 1px; }
+
+/* ---- context meter (drawer head) ----
+   Reads as a sibling of .ai-status, not as a widget: no box, no fill, hairline
+   track and a mono numeral. It only gains colour when it starts to matter. */
+.ai-context {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin: 0; padding: 2px 0; border: 0; background: none;
+  color: var(--muted); cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1;
+  transition: color .15s ease;
+}
+.ai-context.hidden { display: none; }
+.ai-context-track {
+  display: block; width: 30px; height: 3px; border-radius: 99px;
+  background: var(--line); overflow: hidden;
+}
+.ai-context-track i {
+  display: block; height: 100%; width: 0; min-width: 3px; border-radius: 99px;
+  background: currentColor; transition: width .35s cubic-bezier(.33,0,.2,1);
+}
+.ai-context:hover { color: var(--ink-soft); }
+/* The panel sits at the drawer's left edge (same geometry as the history
+   popover), so the trigger itself carries the "this is open" signal. */
+.ai-context[aria-expanded="true"] { color: var(--ink); }
+.ai-context[aria-expanded="true"] .ai-context-track { background: color-mix(in srgb, var(--ink) 14%, transparent); }
+.ai-context[data-level="warn"] { color: var(--warn-ink); }
+.ai-context[data-level="critical"] { color: var(--accent-ink); }
+.ai-context[data-level="warn"] .ai-context-track { background: rgba(214,168,90,.22); }
+.ai-context[data-level="critical"] .ai-context-track { background: rgba(199,95,62,.18); }
+.ai-context:focus { outline: none; }
+.ai-context:focus-visible { outline: none; color: var(--accent-ink); }
+.ai-context:focus-visible .ai-context-track { box-shadow: 0 0 0 3px rgba(199,95,62,.16); }
+
+/* ---- context panel ----
+   Same geometry family as the conversation history popover: anchored under its
+   own trigger, paper surface, hairline border, no heavy chrome. */
+.ai-context-panel {
+  position: absolute; right: 14px; bottom: 92px; z-index: 6;
+  width: min(272px, calc(100% - 28px));
+  padding: 12px 13px 11px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow);
+}
+.ai-context-panel.hidden { display: none; }
+.ai-context-panel-head { display: flex; align-items: center; justify-content: space-between; }
+.ai-context-eyebrow {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.ai-context-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; margin: -3px -3px 0 0;
+  border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer;
+}
+.ai-context-close:hover { color: var(--accent-ink); background: rgba(199,95,62,.08); }
+
+.ai-context-headline {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 8px 0 10px; font-size: 10.5px; line-height: 1.4; color: var(--muted);
+}
+.ai-context-headline b {
+  font-family: var(--mono); font-size: 17px; font-weight: 500; color: var(--ink);
+  letter-spacing: -.03em; line-height: 1;
+}
+.ai-context-headline b::after {
+  content: " used"; font-family: var(--sans); font-size: 10.5px;
+  font-weight: 400; color: var(--muted); letter-spacing: 0;
+}
+
+/* Composition of what is used — normalised to full width so it stays readable
+   even when the window is nearly empty. */
+.ai-context-stack {
+  display: flex; gap: 2px; height: 6px; margin-bottom: 12px;
+  border-radius: 99px; overflow: hidden;
+}
+.ai-context-stack i { display: block; min-width: 3px; border-radius: 99px; }
+
+/* one accent for the live conversation, warm neutrals for the fixed overhead */
+[data-tone="live"] { background: var(--accent); }
+[data-tone="images"] { background: var(--warn); }
+[data-tone="fixed"] { background: #b8b1a2; }
+[data-tone="fixed-2"] { background: #cdc7b8; }
+[data-tone="fixed-3"] { background: #ded8c9; }
+
+.ai-ctx-rows { display: flex; flex-direction: column; gap: 5px; }
+.ai-ctx-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.ai-ctx-key { width: 6px; height: 6px; border-radius: 2px; flex: 0 0 auto; }
+.ai-ctx-name { color: var(--ink-soft); }
+.ai-ctx-row b {
+  margin-left: auto; font-family: var(--mono); font-size: 10.5px;
+  font-weight: 500; color: var(--ink);
+}
+.ai-context-limit {
+  margin: 12px 0 0; padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: 9.5px; line-height: 1.55; color: var(--muted); font-family: var(--mono);
+}
+.ai-context-actions { display: flex; gap: 6px; margin-top: 10px; }
+.ai-context-actions button {
+  flex: 1; height: 26px; border: 1px solid var(--line); border-radius: 7px; padding: 0 8px;
+  background: var(--paper); color: var(--ink-soft); cursor: pointer;
+  font: 500 11.5px var(--sans);
+  transition: color .13s, border-color .13s, background .13s;
+}
+.ai-context-actions button:hover {
+  color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: rgba(199,95,62,.05);
+}
+.ai-context-actions button:focus-visible { outline: 2px solid rgba(199,95,62,.35); outline-offset: 1px; }
+
+/* ---- compaction card ---- */
+.ai-compaction {
+  align-self: stretch; padding: 10px 12px; border-radius: 13px;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+}
+.ai-compaction-head {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: 0; padding: 0; cursor: default; color: var(--ink-soft);
+  font: inherit; text-align: left;
+}
+.ai-compaction.done .ai-compaction-head { cursor: pointer; }
+.ai-compaction-head b { font-size: 12.5px; color: var(--ink); font-weight: 600; }
+.ai-compaction-head .ai-tool-chev { margin-left: auto; opacity: .5; transition: transform .18s ease; }
+.ai-compaction.open .ai-tool-chev { transform: rotate(180deg); }
+.ai-compaction-reason {
+  margin-left: auto; font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--ink-soft); opacity: .75;
+}
+.ai-compaction-body { margin: 6px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-soft); }
+.ai-compaction-summary { display: none; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); font-size: 12px; }
+.ai-compaction.open .ai-compaction-summary { display: block; }
+.ai-compaction.failed { border-color: #e6c3b4; background: #fdf3ee; }
+
+/* ---- permission prompt ---- */
+.ai-permission {
+  align-self: stretch; padding: 12px; border-radius: 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: var(--paper); box-shadow: inset 3px 0 0 var(--accent), 0 1px 2px rgba(29,27,22,.04);
+}
+.ai-permission[data-risk="high"] { background: #fdf6f3; }
+.ai-permission-head { display: flex; align-items: center; gap: 7px; color: var(--accent-ink); }
+.ai-permission-title { font-size: 13px; color: var(--ink); font-weight: 650; }
+.ai-permission-cap {
+  margin-left: auto; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-soft);
+}
+.ai-permission-details { margin: 8px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
+.ai-permission-details li { font-size: 11.5px; line-height: 1.45; color: var(--ink); }
+.ai-permission-actions { display: flex; gap: 7px; margin-top: 11px; flex-wrap: wrap; }
+.ai-permission-actions button {
+  height: 26px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--paper); color: var(--ink-soft); font: 500 11.5px var(--sans); cursor: pointer;
+  transition: color .13s, border-color .13s, background .13s;
+}
+.ai-permission-actions button[data-choice="once"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.ai-permission-actions button[data-choice="deny"] { margin-left: auto; }
+.ai-permission-actions button:hover { border-color: var(--accent); color: var(--accent-ink); }
+.ai-permission-actions button[data-choice="once"]:hover { color: var(--bg); filter: brightness(1.1); }
+.ai-permission.resolved { box-shadow: none; border-color: var(--line); background: var(--paper); opacity: .85; }
+.ai-permission.resolved .ai-permission-head { color: var(--ink-soft); }
+.ai-permission-outcome { font-size: 11px; font-weight: 600; color: var(--ink-soft); }
+.ai-permission[data-choice="deny"].resolved .ai-permission-outcome { color: var(--accent-ink); }
+
+/* The drawer's close button is a sibling of the icon set, not a boxed control:
+   the bordered pill made it read as a different tier of action. */
+.ai-head .panel-close {
+  width: 28px; height: 28px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft); font-size: 17px;
+  transition: color .13s, background .13s;
+}
+.ai-head .panel-close:hover {
+  color: var(--ink); background: color-mix(in srgb, var(--ink) 5.5%, transparent);
+}
+.ai-head-actions { display: flex; align-items: center; gap: 2px; }

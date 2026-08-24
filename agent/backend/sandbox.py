@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 import os
 import subprocess
 import sys
@@ -50,12 +51,43 @@ ADDRESS_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB best-effort cap
 MAX_CODE_CHARS = 20000
 MAX_OUTPUT_CHARS = 20000
 MAX_FIGURE_BYTES = 2 * 1024 * 1024
+# Windowed run_python materializes channels × samples as float32 three times over
+# (store read → .npy on disk → worker load). Without a ceiling, a wide request on
+# a high-channel recording allocates GBs server-side and then dies inside the
+# worker's 2 GB address-space limit. 24M values ≈ 96 MB per copy.
+MAX_WINDOW_VALUES = 24_000_000
 
 
 def _json_error(message: str, status_code: int = 400, **extra) -> JSONResponse:
     payload = {"error": message}
     payload.update(extra)
     return JSONResponse(payload, status_code=status_code)
+
+
+def window_budget(n_channels: int, fs: float, start_sec: float, end_sec: float) -> dict:
+    """How big a windowed run_python read would be, and whether it is affordable.
+
+    A per-channel cap alone is not a memory bound: 276 channels × 2M samples is
+    still 2.2 GB, materialised three times over on the way to the worker. The
+    budget is on channels × samples, and the reply tells the agent the longest
+    window it *can* ask for so it can split the work instead of guessing.
+    """
+    n_channels = max(1, int(n_channels or 1))
+    fs = float(fs or 256.0) or 256.0
+    span_sec = max(0.0, float(end_sec) - float(start_sec))
+    estimated = n_channels * span_sec * fs
+    # Floor, never round: a rounded-up ceiling would itself exceed the budget and
+    # the agent's obedient retry would fail again.
+    affordable = math.floor(MAX_WINDOW_VALUES / (n_channels * fs) * 100) / 100
+    return {
+        "ok": estimated <= MAX_WINDOW_VALUES,
+        "maxValues": MAX_WINDOW_VALUES,
+        "estimatedValues": int(estimated),
+        "maxWindowSec": affordable,
+        "nChannels": n_channels,
+        "fs": fs,
+        "spanSec": span_sec,
+    }
 
 
 def _truncate(text: str) -> str:
@@ -182,6 +214,7 @@ async def ai_execute(request: Request) -> Response:
     dataset = get_dataset(token)
     window_start_sec = 0.0
     window_end_sec = None
+    window_info = None
 
     # Large recording → read only the requested window from the out-of-core store.
     if dataset is None and signal_store is not None and signal_store.get_meta(token) is not None:
@@ -194,7 +227,30 @@ async def ai_execute(request: Request) -> Response:
                 "window. Pass startSec and endSec (find one with signal_query op='search').",
                 400,
             )
-        result = signal_store.read_samples(token, float(start), float(end))
+        try:
+            start, end = float(start), float(end)
+        except (TypeError, ValueError):
+            return _json_error("startSec and endSec must be numbers.", 400)
+        if end <= start:
+            return _json_error("endSec must be greater than startSec.", 400)
+
+        store_meta = signal_store.get_meta(token) or {}
+        budget = window_budget(store_meta.get("nChannels"), store_meta.get("fs"), start, end)
+        if not budget["ok"]:
+            return _json_error(
+                "This window is too large to load for exact per-sample analysis "
+                f"({budget['nChannels']} channels × {budget['spanSec']:.1f}s × {budget['fs']:g} Hz). "
+                f"Request at most ~{budget['maxWindowSec']:g}s of all channels, or narrow the window.",
+                413,
+                errorCode="WINDOW_TOO_LARGE",
+                workflowHint=(
+                    "Use signal_query op='search' to pick a focused candidate window, then call "
+                    "run_python on that bounded window. Split a long review into several bounded calls."
+                ),
+                budget=budget,
+            )
+
+        result = signal_store.read_samples(token, start, end)
         if result is None:
             return _json_error("No windowed dataset for this dataToken. Reload, then retry.", 409)
         arr, info = result
@@ -202,6 +258,18 @@ async def ai_execute(request: Request) -> Response:
                    "groups": [group_of(label) for label in info["labels"]]}
         window_start_sec = info["startSec"]
         window_end_sec = info["endSec"]
+        # The store caps samples per channel, so the loaded window can be SHORTER
+        # than the requested one. Report what was actually analysed; the agent
+        # tool downgrades its `exact` claim from this.
+        window_info = {
+            "startSec": info["startSec"],
+            "endSec": info["endSec"],
+            "requestedStartSec": start,
+            "requestedEndSec": end,
+            "nSamples": int(info["nSamples"]),
+            "nChannels": int(arr.shape[0]),
+            "truncated": bool(info.get("truncated")),
+        }
 
     if dataset is None:
         return _json_error(
@@ -213,4 +281,6 @@ async def ai_execute(request: Request) -> Response:
         _run_worker, code, dataset, workspace, window_start_sec, window_end_sec,
         sandbox_attachments,
     )
+    if window_info is not None:
+        result["window"] = window_info
     return JSONResponse(result)

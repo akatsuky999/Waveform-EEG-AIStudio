@@ -87,10 +87,22 @@ export function parseSSEChunk(block) {
   };
 }
 
-function mergeToolDeltas(acc, deltas) {
+export function mergeToolDeltas(acc, deltas) {
   for (const d of deltas) {
     if (!d || typeof d !== "object") continue;
-    const idx = Number.isInteger(d.index) ? d.index : acc.size;
+    // Providers that omit `index` send one delta to OPEN a call (it carries id
+    // and/or function.name) and further deltas that only carry argument
+    // fragments. Falling back to acc.size for both filed every fragment under a
+    // new, nameless entry — buildToolCalls then dropped it and the call arrived
+    // with truncated/invalid JSON arguments. Continuations now append to the
+    // call that is already open.
+    const opensCall = Boolean(d.id || d.function?.name);
+    const lastIndex = acc.size ? Math.max(...acc.keys()) : -1;
+    const sameId = d.id ? [...acc.entries()].find(([, call]) => call.id === d.id) : null;
+    const idx = Number.isInteger(d.index)
+      ? d.index
+      : sameId ? sameId[0]                                   // provider repeats the id per delta
+      : (opensCall || lastIndex < 0 ? acc.size : lastIndex);
     const cur = acc.get(idx) || { id: "", name: "", args: "" };
     if (d.id) cur.id = d.id;
     const f = d.function || {};
@@ -100,7 +112,7 @@ function mergeToolDeltas(acc, deltas) {
   }
 }
 
-function buildToolCalls(acc) {
+export function buildToolCalls(acc) {
   const out = [];
   for (const [idx, c] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
     if (!c.name) continue;

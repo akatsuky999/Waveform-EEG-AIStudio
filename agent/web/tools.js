@@ -89,6 +89,33 @@ function redactDisabledSkill(skill) {
   };
 }
 
+// Side effects go through the permission broker when one is attached (the live
+// agent), and fall back to the per-turn intent read when it is not (tests,
+// legacy callers). Both paths end in the same refusal error, so the model sees
+// one consistent contract.
+async function authorize(host, policy, capability, tool, args) {
+  if (policy?.broker?.require) {
+    let eventCount;
+    try { eventCount = host?.signal?.getEvents?.().length; } catch { eventCount = undefined; }
+    return policy.broker.require(capability, { tool, args, context: { eventCount } });
+  }
+  requireAction(policy, capability);
+  return { granted: true, source: "turn-intent" };
+}
+
+function authorizationNote(decision) {
+  if (!decision?.source) return {};
+  const label = {
+    "user-prompt": decision.scope === "conversation"
+      ? "The user approved this action and allowed it for the rest of this conversation."
+      : "The user reviewed and approved this exact action.",
+    "conversation-grant": "Covered by an approval the user already gave for this conversation.",
+    "turn-intent": "Authorized by the user's request in this turn.",
+    "trusted-mode": "Auto-approved because the workspace is in trusted mode.",
+  }[decision.source];
+  return label ? { authorizedBy: decision.source, authorization: label } : {};
+}
+
 export async function runToolCall(host, call, signal, policy = {}) {
   const requestedName = String(call?.name || call?.tool || "").trim();
   const name = resolveToolName(requestedName);
@@ -136,24 +163,24 @@ export async function runToolCall(host, call, signal, policy = {}) {
       return ok(name, await host.skills.read(skillName, signal));
     }
     if (name === "create_agent_skill") {
-      requireAction(policy, "skillWrite");
-      validateSkillWriteArgs(name, args);
+      validateSkillWriteArgs(name, args);   // validate before asking the user to approve
+      const decision = await authorize(host, policy, "skillWrite", name, args);
       const saved = await host.skills.create(args, signal);
-      return ok(name, { saved: true, operation: "create", skill: skillSummary(saved) });
+      return ok(name, { saved: true, operation: "create", skill: skillSummary(saved), ...authorizationNote(decision) });
     }
     if (name === "update_agent_skill") {
-      requireAction(policy, "skillWrite");
       validateSkillWriteArgs(name, args);
+      const decision = await authorize(host, policy, "skillWrite", name, args);
       const saved = await host.skills.update(args.name, args, signal);
-      return ok(name, { saved: true, operation: "update", skill: skillSummary(saved) });
+      return ok(name, { saved: true, operation: "update", skill: skillSummary(saved), ...authorizationNote(decision) });
     }
     if (name === "list_context_files") return ok(name, await listContextFilesTool(host, signal));
     if (name === "read_context_file") return ok(name, await readContextFileTool(host, args, signal));
     if (name === "grep_context_file") return ok(name, await grepContextFileTool(host, args, signal));
     if (name === "list_signal_sources") return ok(name, await host.project.listSources());
     if (name === "open_signal_source") {
-      requireAction(policy, "fileSwitch");
-      return ok(name, await host.project.openSource(args));
+      const decision = await authorize(host, policy, "fileSwitch", name, args);
+      return ok(name, { ...await host.project.openSource(args), ...authorizationNote(decision) });
     }
     if (name === "signal_query") return signalQueryTool(host, args, signal);
     if (name === "inspect_channel") {
@@ -178,16 +205,19 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (name === "control_signal_view") return ok(name, host.workspace.setView(args));
     if (name === "configure_signal_processing") return ok(name, host.workspace.configureProcessing(args));
     if (name === "manage_signal_events") {
-      requireAction(policy, "annotation");
-      return ok(name, compactEventWriteResult(host.workspace.manageEvents(args.operation, args.events)));
+      const decision = await authorize(host, policy, "annotation", name, args);
+      return ok(name, {
+        ...compactEventWriteResult(host.workspace.manageEvents(args.operation, args.events)),
+        ...authorizationNote(decision),
+      });
     }
     if (name === "render_signal_images") {
       const rendered = await host.artifacts.renderImages({ ...args, __agentLimits: host.getAgentConfiguration?.() }, signal);
       return ok(name, rendered.result, { attachments: rendered.attachments || [] });
     }
     if (name === "export_signal_artifact") {
-      requireAction(policy, "export");
-      return ok(name, await host.artifacts.exportArtifact(args, signal));
+      const decision = await authorize(host, policy, "export", name, args);
+      return ok(name, { ...await host.artifacts.exportArtifact(args, signal), ...authorizationNote(decision) });
     }
     throw new Error(`Unsupported tool: ${requestedName || "empty"}`);
   } catch (error) {
@@ -260,10 +290,40 @@ function isWindowed(host) {
   try { return !!host.signal.getState()?.windowed; } catch { return false; }
 }
 
+// Two channel-index spaces exist and they are NOT the same list once a montage
+// is on: the viewer shows DERIVED rows (e.g. the bipolar pair FP1-F7), while the
+// out-of-core store only knows the RECORDING's source electrodes. Every index
+// crossing into signal_query must be translated through channelMeta.sourceIndex,
+// or the store answers about a different electrode than the one the model asked
+// about — silently, with confident numbers.
+function toSourceIndex(host, displayedIndex) {
+  if (!Number.isInteger(displayedIndex)) return null;
+  const source = host.signal.getChannelMeta?.(displayedIndex)?.sourceIndex;
+  return Number.isInteger(source) ? source : displayedIndex;
+}
+
+function resolveSourceChannel(host, ref) {
+  const displayed = host.signal.resolveChannel(ref);
+  return displayed === null || displayed === undefined ? null : toSourceIndex(host, displayed);
+}
+
+function resolveSourceChannels(host, refs) {
+  if (!Array.isArray(refs) || !refs.length) return undefined;
+  const mapped = refs.map((ref) => resolveSourceChannel(host, ref)).filter(Number.isInteger);
+  return mapped.length ? [...new Set(mapped)] : undefined;
+}
+
 async function signalQueryTool(host, args, signal) {
   const op = String(args.op || "");
   if (op !== "search" && op !== "aggregate") {
     return { name: "signal_query", ok: false, error: "op must be 'search' or 'aggregate'." };
+  }
+  if (!isWindowed(host)) {
+    return {
+      name: "signal_query", ok: false,
+      error: "signal_query only applies to large/windowed recordings (get_signal_workspace_state.windowed=true). This recording is fully loaded — use inspect_channel, inspect_time_window, rank_channels, or run_python instead.",
+      workflowHint: "Check get_signal_workspace_state.windowed before calling signal_query.",
+    };
   }
   try {
     const spec = { op };
@@ -274,11 +334,14 @@ async function signalQueryTool(host, args, signal) {
     }
     if (numberArg(args.startSec) !== null) spec.startSec = numberArg(args.startSec);
     if (numberArg(args.endSec) !== null) spec.endSec = numberArg(args.endSec);
-    if (Array.isArray(args.channels) && args.channels.length) {
-      spec.channels = args.channels.map((ref) => host.signal.resolveChannel(ref)).filter(Number.isInteger);
-    }
+    const channels = resolveSourceChannels(host, args.channels);
+    if (channels) spec.channels = channels;
     const payload = await host.signalQuery(spec, signal);
-    return ok("signal_query", { ...payload, workflowHint: windowedWorkflowHint(op) });
+    return ok("signal_query", {
+      ...payload,
+      channelIndexSpace: "recording-source",
+      workflowHint: windowedWorkflowHint(op),
+    });
   } catch (error) {
     return { name: "signal_query", ok: false, error: error.message || String(error) };
   }
@@ -287,13 +350,20 @@ async function signalQueryTool(host, args, signal) {
 async function windowedInspectChannel(host, args, signal) {
   const index = host.signal.resolveChannel(args.channel ?? args.label ?? args.index);
   if (index === null) throw new Error("Channel not found");
+  const sourceIndex = toSourceIndex(host, index);
   const view = host.signal.getView();
   const start = numberArg(args.startSec) ?? view.startSec;
   const end = numberArg(args.endSec) ?? view.endSec;
-  const payload = await host.signalQuery({ op: "aggregate", startSec: start, endSec: end, channels: [index] }, signal);
+  const payload = await host.signalQuery({ op: "aggregate", startSec: start, endSec: end, channels: [sourceIndex] }, signal);
   const meta = host.signal.getChannelMeta(index) || {};
   return {
-    channel: { index, label: meta.label, group: meta.group },
+    channel: {
+      index, sourceIndex, label: meta.label, group: meta.group,
+      ...(meta.montage && meta.montage !== "raw" ? {
+        montage: meta.montage,
+        note: "The view shows a derived montage row; the measurements below come from its source recording channel.",
+      } : {}),
+    },
     exact: payload.meta?.exact, window: payload.channels?.[0] || null,
   };
 }
@@ -301,23 +371,65 @@ async function windowedInspectChannel(host, args, signal) {
 async function windowedTimeWindow(host, args, signal) {
   const start = numberArg(args.startSec), end = numberArg(args.endSec);
   if (start === null || end === null || end <= start) throw new Error("startSec/endSec must define a forward time window");
-  const channels = Array.isArray(args.channels) && args.channels.length
-    ? args.channels.map((ref) => host.signal.resolveChannel(ref)).filter(Number.isInteger) : undefined;
+  const channels = resolveSourceChannels(host, args.channels);
   const payload = await host.signalQuery({ op: "aggregate", startSec: start, endSec: end, channels }, signal);
   return {
     startSec: round(start), endSec: round(end), durationSec: round(end - start),
     exact: payload.meta?.exact, channels: payload.channels || [],
+    channelIndexSpace: "recording-source",
   };
 }
 
+// The feature index only carries time-domain features, so a spectral metric has
+// no exact equivalent. Substituting one silently (gammaRatio → lineLength) would
+// make the model report a band-power ranking it never measured, so the
+// substitution is now declared in the result.
+const WINDOWED_METRIC = {
+  rms: { metric: "rms" },
+  peakToPeak: { metric: "p2p" },
+  artifactScore: { metric: "artifact" },
+  gammaRatio: {
+    metric: "lineLength",
+    proxy: "The 1 s feature index has no band power. lineLength is used as a high-frequency-content proxy; confirm any gamma claim with run_python on a bounded window.",
+  },
+  dominantFrequency: {
+    metric: "zeroCross",
+    proxy: "The 1 s feature index has no spectrum. zeroCross is used as a rate proxy; confirm any dominant-frequency claim with run_python on a bounded window.",
+  },
+};
+
 async function windowedRank(host, args, signal) {
-  const map = { rms: "rms", peakToPeak: "p2p", artifactScore: "artifact", gammaRatio: "lineLength", dominantFrequency: "zeroCross" };
-  const metric = map[args.metric] || "rms";
-  const payload = await host.signalQuery({ op: "search", metric, limit: args.limit || 8 }, signal);
-  return (payload.windows || []).map((w) => ({
-    index: w.channel, label: w.label, metric, score: w.score,
-    startSec: w.startSec, endSec: w.endSec, ...w.features,
-  }));
+  const requested = String(args.metric || "artifactScore");
+  const mapping = WINDOWED_METRIC[requested] || WINDOWED_METRIC.artifactScore;
+  const metric = mapping.metric;
+  const limit = Math.max(1, Math.min(24, parseInt(args.limit, 10) || 8));
+  // search ranks WINDOWS, and its top-k can be many windows of one channel. This
+  // tool promises a CHANNEL ranking, so ask for a deeper window list and keep the
+  // strongest window per channel.
+  const payload = await host.signalQuery({ op: "search", metric, limit: Math.min(64, limit * 4) }, signal);
+  const best = new Map();
+  for (const window of payload.windows || []) {
+    const current = best.get(window.channel);
+    if (!current || (window.score || 0) > (current.score || 0)) best.set(window.channel, window);
+  }
+  const channels = [...best.values()]
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, limit)
+    .map((w) => ({
+      index: w.channel, sourceIndex: w.channel, label: w.label,
+      metric, metricRequested: requested, score: w.score,
+      strongestWindow: { startSec: w.startSec, endSec: w.endSec },
+      ...w.features,
+    }));
+  return {
+    metric, metricRequested: requested,
+    ...(mapping.proxy ? { metricIsProxy: true, metricNote: mapping.proxy } : {}),
+    grain: payload.meta?.grain || "featureGrid:1s",
+    channelIndexSpace: "recording-source",
+    scannedChannels: payload.meta?.scannedChannels,
+    partial: payload.meta?.partial || false,
+    channels,
+  };
 }
 
 // ---- companion-file (attachment) tools ----------------------------------
@@ -399,14 +511,28 @@ async function runPythonTool(host, args, signal) {
       figureAttached: !!figure,
     };
     if (windowed) {
+      // Report the window the sandbox ACTUALLY loaded, not the one that was
+      // requested: the store caps samples per channel, so a wide request can come
+      // back short. Claiming `exact` over the requested span would make the model
+      // report findings for seconds it never saw.
+      const analyzed = data.window && Number.isFinite(data.window.startSec) && Number.isFinite(data.window.endSec)
+        ? data.window
+        : null;
+      const startSec = analyzed ? analyzed.startSec : window.startSec;
+      const endSec = analyzed ? analyzed.endSec : window.endSec;
+      const truncated = Boolean(analyzed?.truncated);
       result.windowed = true;
       result.window = {
-        startSec: round(window.startSec),
-        endSec: round(window.endSec),
-        durationSec: round(window.endSec - window.startSec),
+        startSec: round(startSec),
+        endSec: round(endSec),
+        durationSec: round(endSec - startSec),
+        requested: { startSec: round(window.startSec), endSec: round(window.endSec) },
+        ...(truncated ? { truncated: true } : {}),
       };
-      result.exact = true;
-      result.workflowHint = "Use render_signal_images on this short window for morphology evidence before making visual claims.";
+      result.exact = !truncated;
+      result.workflowHint = truncated
+        ? `Only ${round(startSec)}–${round(endSec)}s was loaded (the store caps samples per window). Analyse the remainder in further bounded calls; do not describe the un-analysed part.`
+        : "Use render_signal_images on this short window for morphology evidence before making visual claims.";
     }
     const attachments = figure ? [{ kind: "image", dataUrl: figure, label: "Python analysis figure" }] : [];
     return { name: "run_python", ok: !!data.ok, result, attachments, code };

@@ -59,8 +59,18 @@ function authorized(text, positive, negative) {
   return !matchesAny(text, negative) && matchesAny(text, positive);
 }
 
+// "Not asked for" and "explicitly refused" are different answers and must stay
+// different: the first may be escalated to a permission prompt, the second must
+// never be — re-asking after "不要标注" is a second chance at something the user
+// already declined.
 export function deriveActionPolicy(userText = "") {
   const text = String(userText || "").replace(/\s+/g, " ").trim();
+  const denied = Object.freeze({
+    annotation: matchesAny(text, annotationNegative),
+    fileSwitch: matchesAny(text, fileNegative),
+    export: matchesAny(text, exportNegative),
+    skillWrite: matchesAny(text, skillWriteNegative),
+  });
   return Object.freeze({
     userText: text,
     annotation: authorized(text, annotationPositive, annotationNegative),
@@ -68,6 +78,7 @@ export function deriveActionPolicy(userText = "") {
     export: authorized(text, exportPositive, exportNegative),
     skillWrite: authorized(text, skillWritePositive, skillWriteNegative),
     skillInspect: authorized(text, skillInspectPositive, []),
+    denied,
   });
 }
 

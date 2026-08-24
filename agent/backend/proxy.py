@@ -192,39 +192,67 @@ def _normalised_stream_events(response):
     yield b"data: [DONE]\n\n"
 
 
-def _http_chat_stream(url: str, headers: dict[str, str], payload):
-    body = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=AI_TIMEOUT_SECONDS) as response:  # noqa: S310
-            content_type = response.headers.get("content-type", "")
-            if "text/event-stream" in content_type:
-                yield from _normalised_stream_events(response)
-                return
+def retry_payload_without_rejected_param(payload: dict, message: str) -> dict | None:
+    """Drop a sampling parameter the upstream model refuses, for one retry.
 
-            raw = response.read(MAX_AI_RESPONSE_BYTES)
-            data = _safe_json_loads(raw)
-            payload = None
-            if isinstance(data, dict):
-                payload = _forward_choice(data)
-            if payload is None:
-                objects, _rest = _extract_json_objects(raw.decode("utf-8", "replace"))
-                for obj in objects:
-                    payload = _forward_choice(obj)
-                    if payload:
-                        break
-            if payload:
-                yield _sse(payload)
-                yield b"data: [DONE]\n\n"
-            else:
-                yield _sse({"error": "Upstream response did not include assistant text or tool calls."}, "error")
-    except urllib.error.HTTPError as exc:
-        raw = exc.read(MAX_AI_RESPONSE_BYTES)
-        upstream = _safe_json_loads(raw)
-        yield _sse({"error": _upstream_error(upstream, exc.code), "upstreamStatus": exc.code}, "error")
-    except urllib.error.URLError as exc:
-        reason = getattr(exc, "reason", exc)
-        yield _sse({"error": f"Could not reach upstream: {reason}"}, "error")
+    Reasoning-tuned models (the GPT-5 / o-series family and some of their
+    proxies) reject any explicit ``temperature`` with HTTP 400 instead of
+    ignoring it, which made every request from this app fail on those models.
+    Rather than guessing per model id, react to what the provider actually said.
+    """
+    text = str(message or "").lower()
+    for key in ("temperature", "top_p"):
+        if key in payload and key in text:
+            retry = dict(payload)
+            retry.pop(key, None)
+            return retry
+    return None
+
+
+def _http_chat_stream(url: str, headers: dict[str, str], payload):
+    attempt_payload = payload
+    for attempt in range(2):
+        body = json.dumps(attempt_payload).encode("utf-8")
+        request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=AI_TIMEOUT_SECONDS) as response:  # noqa: S310
+                content_type = response.headers.get("content-type", "")
+                if "text/event-stream" in content_type:
+                    yield from _normalised_stream_events(response)
+                    return
+
+                raw = response.read(MAX_AI_RESPONSE_BYTES)
+                data = _safe_json_loads(raw)
+                forwarded = None
+                if isinstance(data, dict):
+                    forwarded = _forward_choice(data)
+                if forwarded is None:
+                    objects, _rest = _extract_json_objects(raw.decode("utf-8", "replace"))
+                    for obj in objects:
+                        forwarded = _forward_choice(obj)
+                        if forwarded:
+                            break
+                if forwarded:
+                    yield _sse(forwarded)
+                    yield b"data: [DONE]\n\n"
+                else:
+                    yield _sse({"error": "Upstream response did not include assistant text or tool calls."}, "error")
+                return
+        except urllib.error.HTTPError as exc:
+            raw = exc.read(MAX_AI_RESPONSE_BYTES)
+            upstream = _safe_json_loads(raw)
+            message = _upstream_error(upstream, exc.code)
+            # Nothing has been streamed yet, so one clean retry is safe.
+            retry = retry_payload_without_rejected_param(attempt_payload, message) if exc.code == 400 else None
+            if attempt == 0 and retry is not None:
+                attempt_payload = retry
+                continue
+            yield _sse({"error": message, "upstreamStatus": exc.code}, "error")
+            return
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", exc)
+            yield _sse({"error": f"Could not reach upstream: {reason}"}, "error")
+            return
 
 
 def _clean_message_content(content):
@@ -412,6 +440,12 @@ async def ai_chat(request: Request) -> Response:
         status, upstream = await asyncio.to_thread(
             _http_json, "POST", _ai_endpoint(base_url, "/chat/completions"), headers, payload
         )
+        if status == 400:
+            retry = retry_payload_without_rejected_param(payload, _upstream_error(upstream, status))
+            if retry is not None:
+                status, upstream = await asyncio.to_thread(
+                    _http_json, "POST", _ai_endpoint(base_url, "/chat/completions"), headers, retry
+                )
     except ConnectionError as exc:
         return _json_error(str(exc), 502)
 

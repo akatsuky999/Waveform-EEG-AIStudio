@@ -107,21 +107,49 @@
             </header>
             <div class="controls-empty" id="controlsEmpty">Load an EEG file to enable signal controls.</div>
             <div class="rail controls-scroll is-disabled" id="rail">
-              <section class="ws-section" data-ws-section="display">
+                            <div class="chain" data-chain>
+                <div class="chain-head">
+                  <span class="chain-eyebrow">Signal chain</span>
+                  <p class="chain-recipe" id="chainRecipe"></p>
+                </div>
+<section class="ws-section" data-ws-section="filters">
                 <button class="ws-toggle" type="button" aria-expanded="true">
-                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Display</span>
+                  <span class="stage-node" aria-hidden="true"></span><span class="stage-no" aria-hidden="true">01</span><span class="ws-title stage-name">Filter</span>
+                  <span class="stage-sub" aria-hidden="true">band + notch</span><span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="filter-presets" id="filterPresets">
+                    <button data-low="1" data-high="70" title="Review · 1–70 Hz">Review</button>
+                    <button data-low="1" data-high="40" title="Seizure · 1–40 Hz">Seizure</button>
+                    <button data-low="0.3" data-high="35" title="Sleep · 0.3–35 Hz">Sleep</button>
+                    <button data-low="80" data-high="250" title="HFO · 80–250 Hz">HFO</button>
+                    <button data-low="0" data-high="0" data-notch="off" title="No band filter">Off</button>
+                  </div>
+                  <canvas class="filter-response" id="filterResponse" title="Filter frequency response"></canvas>
+                  <div class="grid-2">
+                    <label class="mini-field">Low cut <input type="number" id="filterLow" min="0" max="120" step="0.5" placeholder="0" /></label>
+                    <label class="mini-field">High cut <input type="number" id="filterHigh" min="0" max="128" step="0.5" placeholder="off" /></label>
+                  </div>
+                  <div class="mini-field full">Notch
+                    <select id="filterNotch">
+                      <option value="off">Off</option>
+                      <option value="50">50 Hz</option>
+                      <option value="60">60 Hz</option>
+                    </select>
+                  </div>
+                </div></div>
+              </section>
+              <section class="ws-section" data-ws-section="montage">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="stage-node" aria-hidden="true"></span>
+                  <span class="stage-no" aria-hidden="true">02</span>
+                  <span class="ws-title stage-name">Montage</span>
+                  <span class="stage-sub" aria-hidden="true">reference</span>
                   <span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
-                  <div class="ctrl">
-                    <div class="row"><label>Amplitude gain</label><span class="val" id="gainVal">1.0×</span></div>
-                    <input type="range" id="gain" min="-2" max="3" step="0.01" value="0" />
-                  </div>
-                  <div class="ctrl">
-                    <div class="row"><label>Row height</label><span class="val" id="rowVal">46 px</span></div>
-                    <input type="range" id="row" min="20" max="130" step="1" value="46" />
-                  </div>
                   <label class="mini-field full">Montage
                     <select id="montageMode">
                       <option value="raw">Original channels</option>
@@ -133,40 +161,10 @@
                   </label>
                 </div></div>
               </section>
-
-              <section class="ws-section" data-ws-section="filters">
+<section class="ws-section" data-ws-section="transform" data-ws-default="collapsed">
                 <button class="ws-toggle" type="button" aria-expanded="true">
-                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Filters</span>
-                  <span class="ws-meta" data-ws-meta></span>
-                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-                </button>
-                <div class="ws-body"><div class="ws-body-inner">
-                  <div class="filter-presets" id="filterPresets">
-                    <button data-low="1" data-high="70">Review 1–70</button>
-                    <button data-low="1" data-high="40">Seizure 1–40</button>
-                    <button data-low="0.3" data-high="35">Sleep 0.3–35</button>
-                    <button data-low="80" data-high="250">HFO 80–250</button>
-                    <button data-low="0" data-high="0" data-notch="off">Off</button>
-                  </div>
-                  <canvas class="filter-response" id="filterResponse" title="Filter frequency response"></canvas>
-                  <div class="grid-2">
-                    <label class="mini-field">Low cut <input type="number" id="filterLow" min="0" max="120" step="0.5" placeholder="0" /></label>
-                    <label class="mini-field">High cut <input type="number" id="filterHigh" min="0" max="128" step="0.5" placeholder="off" /></label>
-                  </div>
-                  <label class="mini-field full">Notch
-                    <select id="filterNotch">
-                      <option value="off">Off</option>
-                      <option value="50">50 Hz + harmonics</option>
-                      <option value="60">60 Hz + harmonics</option>
-                    </select>
-                  </label>
-                </div></div>
-              </section>
-
-              <section class="ws-section" data-ws-section="transform" data-ws-default="collapsed">
-                <button class="ws-toggle" type="button" aria-expanded="true">
-                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Transform</span>
-                  <span class="ws-meta" data-ws-meta></span>
+                  <span class="stage-node" aria-hidden="true"></span><span class="stage-no" aria-hidden="true">03</span><span class="ws-title stage-name">Transform</span>
+                  <span class="stage-sub" aria-hidden="true">difference + scale</span><span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
@@ -201,7 +199,30 @@
                   </div>
                 </div></div>
               </section>
+<section class="ws-section" data-ws-section="display" data-stage-terminal>
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="stage-node" aria-hidden="true"></span><span class="stage-no" aria-hidden="true">04</span><span class="ws-title stage-name">View</span>
+                  <span class="stage-sub" aria-hidden="true">gain + rows</span><span class="ws-meta" data-ws-meta></span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div class="ctrl">
+                    <div class="row"><label>Amplitude gain</label><span class="val" id="gainVal">1.0×</span></div>
+                    <input type="range" id="gain" min="-2" max="3" step="0.01" value="0" />
+                  </div>
+                  <div class="ctrl">
+                    <div class="row"><label>Row height</label><span class="val" id="rowVal">46 px</span></div>
+                    <input type="range" id="row" min="20" max="130" step="1" value="46" />
+                  </div>
+                </div></div>
+              </section>
+              </div>
 
+
+
+
+
+              <div class="zone-rule"><span>Workspace</span></div>
               <section class="ws-section" data-ws-section="channels">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Channels</span>
@@ -209,6 +230,7 @@
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
+                  <div class="electrode-map-wrap" id="electrodeMap"></div>
                   <input class="search-input" type="search" id="channelSearch" placeholder="Search channel or group" />
                   <label class="mini-field full">Sort
                     <select id="channelSort">
@@ -409,7 +431,7 @@
               <div><span class="sidebar-eyebrow">Agent</span><strong>EEG-Master</strong></div>
               <div class="sidebar-head-actions agent-head-actions">
                 <span class="ai-save-state ready" id="aiSaveState" role="status" aria-live="polite">Ready</span>
-                <button type="button" id="aiSaveConfigBtn">Save</button>
+                <button class="ai-btn primary" type="button" id="aiSaveConfigBtn">Save</button>
               </div>
             </header>
             <div class="agent-settings-scroll">
@@ -419,28 +441,26 @@
                   <span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
-                <div class="ws-body"><div class="ws-body-inner">
-                  <div class="ai-field full">
+                <div class="ws-body"><div class="ws-body-inner ai-rows">
+                  <div class="ai-row">
                     <label for="aiBaseUrl">Base URL</label>
-                    <input type="url" id="aiBaseUrl" placeholder="api.openai.com / provider" autocomplete="off" />
+                    <input type="url" id="aiBaseUrl" placeholder="api.openai.com" autocomplete="off" />
                   </div>
-                  <div class="ai-field full">
-                    <label for="aiApiKey">API Key</label>
+                  <div class="ai-row">
+                    <label for="aiApiKey">API key</label>
                     <input type="password" id="aiApiKey" placeholder="session only" autocomplete="off" />
                   </div>
-                  <div class="ai-field-row">
-                    <div class="ai-field">
-                      <label for="aiModelSelect">Model</label>
-                      <select id="aiModelSelect"></select>
-                    </div>
-                    <div class="ai-field hidden" id="aiCustomWrap">
-                      <label for="aiCustomModel">Custom model</label>
-                      <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
-                    </div>
+                  <div class="ai-row">
+                    <label for="aiModelSelect">Model</label>
+                    <select id="aiModelSelect"></select>
                   </div>
-                  <div class="ai-actions-row">
-                    <button class="wide-btn ghost" id="aiTestModelsBtn">Test models</button>
+                  <div class="ai-row hidden" id="aiCustomWrap">
+                    <label for="aiCustomModel">Model id</label>
+                    <input type="text" id="aiCustomModel" placeholder="model-id" autocomplete="off" />
+                  </div>
+                  <div class="ai-row ai-row-action">
                     <span id="aiConfigMsg"></span>
+                    <button class="ai-btn" id="aiTestModelsBtn" type="button">Test connection</button>
                   </div>
                 </div></div>
               </section>
@@ -451,20 +471,39 @@
                   <span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
-                <div class="ws-body"><div class="ws-body-inner">
-                  <div class="ai-metric-grid">
-                    <div class="ai-field compact">
-                      <label for="aiMaxTurns">Steps</label>
-                      <input type="number" id="aiMaxTurns" min="4" max="64" step="1" inputmode="numeric" />
+                <div class="ws-body"><div class="ws-body-inner ai-rows">
+                  <div class="ai-row">
+                    <label for="aiMaxTurns">Max steps</label>
+                    <input class="ai-num" type="number" id="aiMaxTurns" min="4" max="64" step="1" inputmode="numeric" />
+                  </div>
+                  <div class="ai-row">
+                    <label for="aiMaxAgentImages">Images per turn</label>
+                    <input class="ai-num" type="number" id="aiMaxAgentImages" min="1" max="5" step="1" inputmode="numeric" />
+                  </div>
+                  <div class="ai-row">
+                    <label for="aiMaxImageWindowSec">Image window</label>
+                    <span class="ai-value"><input class="ai-num" type="number" id="aiMaxImageWindowSec" min="5" max="15" step="1" inputmode="numeric" /><i class="ai-unit">s</i></span>
+                  </div>
+                  <div class="ai-row">
+                    <label for="aiContextWindow">Context window <em class="ai-src" id="aiContextSource"></em></label>
+                    <span class="ai-value"><input class="ai-num wide" type="number" id="aiContextWindow" min="8000" max="2000000" step="1000" inputmode="numeric" /><i class="ai-unit">tok</i></span>
+                  </div>
+                  <div class="ai-row">
+                    <label for="aiAutoCompact">Auto-compact</label>
+                    <input class="ai-switch" type="checkbox" id="aiAutoCompact" role="switch" />
+                  </div>
+                  <div class="ai-row ai-row-stack">
+                    <label for="aiPermissionMode">Permissions</label>
+                    <div class="ai-seg" id="aiPermissionSeg" role="group" aria-label="Side-effect permission">
+                      <button type="button" data-value="ask">Ask</button>
+                      <button type="button" data-value="readonly">Read-only</button>
+                      <button type="button" data-value="trusted">Trusted</button>
                     </div>
-                    <div class="ai-field compact">
-                      <label for="aiMaxAgentImages">Images</label>
-                      <input type="number" id="aiMaxAgentImages" min="1" max="5" step="1" inputmode="numeric" />
-                    </div>
-                    <div class="ai-field compact">
-                      <label for="aiMaxImageWindowSec">Window</label>
-                      <input type="number" id="aiMaxImageWindowSec" min="5" max="15" step="1" inputmode="numeric" />
-                    </div>
+                    <select id="aiPermissionMode" data-no-enhance hidden>
+                      <option value="ask">Ask</option>
+                      <option value="readonly">Read-only</option>
+                      <option value="trusted">Trusted</option>
+                    </select>
                   </div>
                 </div></div>
               </section>
@@ -478,10 +517,10 @@
                 <div class="ws-body"><div class="ws-body-inner">
                   <div class="ai-skill-toolbar">
                     <input class="ai-skill-search" type="search" id="aiSkillSearch" placeholder="Search skills or triggers" />
-                    <button class="ai-mini-action icon-only" id="aiRefreshSkillsBtn" type="button" title="Refresh skills">
+                    <button class="ai-btn icon" id="aiRefreshSkillsBtn" type="button" title="Refresh skills">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                     </button>
-                    <button class="ai-mini-action" id="aiNewSkillBtn" type="button" title="New skill">
+                    <button class="ai-btn" id="aiNewSkillBtn" type="button" title="New skill">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                       <span>New</span>
                     </button>
@@ -580,6 +619,23 @@
           </div>
         </div>
 
+        <div class="ai-context-panel hidden" id="aiContextPanel" role="dialog" aria-label="Context usage">
+          <div class="ai-context-panel-head">
+            <span class="ai-context-eyebrow">Context</span>
+            <button class="ai-context-close" id="aiContextClose" title="Close" aria-label="Close context panel">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <p class="ai-context-headline" id="aiContextSummary"></p>
+          <div class="ai-context-stack" id="aiContextStack" aria-hidden="true"></div>
+          <div class="ai-ctx-rows" id="aiContextBreakdown"></div>
+          <p class="ai-context-limit" id="aiContextLimit"></p>
+          <div class="ai-context-actions">
+            <button type="button" id="aiContextCompactBtn">Compact now</button>
+            <button type="button" id="aiContextConfigBtn">Window size</button>
+          </div>
+        </div>
+
         <div class="ai-history hidden" id="aiHistory">
           <div class="ai-history-head">
             <b>Conversations</b>
@@ -594,11 +650,11 @@
           <div class="ai-empty">
             <span class="ai-empty-eyebrow">Agent</span>
             <b>EEG-Master</b>
-            <p>I work like an agent: I dig into the actual recording to answer you — inspecting channels, running Python on the real signal, reading the waveform, and annotating events — rather than guessing from a summary.</p>
+            <p>Works the recording, not a summary.</p>
             <div class="ai-empty-caps">
               <span><i>01</i>Inspect &amp; rank channels</span>
-              <span><i>02</i>Run Python on the real signal</span>
-              <span><i>03</i>Detect &amp; mark onset / offset</span>
+              <span><i>02</i>Run Python on the signal</span>
+              <span><i>03</i>Mark onset / offset</span>
             </div>
           </div>
         </div>
@@ -611,14 +667,31 @@
         <div class="ai-composer">
           <div class="ai-composer-box" id="aiComposerBox">
             <div class="ai-attachments" id="aiAttachments" aria-live="polite"></div>
-            <textarea id="aiInput" rows="3" placeholder="Ask EEG-Master about this data..."></textarea>
-            <div class="ai-send-row">
-              <button class="ai-attach-btn" id="aiAttachBtn" type="button" title="Attach a label / annotation / metadata file" aria-label="Attach file">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <textarea id="aiInput" rows="3" placeholder="Ask about this recording"></textarea>
+            <button class="ai-send" id="aiSendBtn" type="button" title="Send" aria-label="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10 4 15l5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+            </button>
+            <button class="ai-send ai-stop hidden" id="aiStopBtn" type="button" title="Stop" aria-label="Stop">
+              <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+            </button>
+          </div>
+
+          <div class="ai-bar">
+            <button class="ai-mode" id="aiModeChip" type="button" data-mode="ask" title="Side-effect permission — click to change">Ask</button>
+            <button class="ai-bar-icon" id="aiAttachBtn" type="button" title="Attach a label / annotation file" aria-label="Attach file">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button class="ai-bar-icon" id="aiSkillsChip" type="button" title="EEG skills" aria-label="EEG skills">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.4 5.2 5.6.7-4.2 3.9 1.1 5.6L12 15.7 7.1 18.4l1.1-5.6L4 8.9l5.6-.7Z"/></svg>
+              <span class="ai-bar-count" id="aiSkillsCount"></span>
+            </button>
+
+            <div class="ai-bar-end">
+              <button class="ai-bar-model" id="aiModelChip" type="button" title="Provider and model">—</button>
+              <button class="ai-context hidden" id="aiContextMeter" type="button" data-level="ok" title="Context usage" aria-haspopup="dialog">
+                <span class="ai-context-track"><i id="aiContextFill"></i></span>
+                <span class="ai-context-label" id="aiContextLabel">0%</span>
               </button>
-              <span class="ai-composer-hint" aria-hidden="true"><kbd>⏎</kbd> send · <kbd>⇧⏎</kbd> newline</span>
-              <button class="btn ghost ai-stop hidden" id="aiStopBtn">Stop</button>
-              <button class="btn accent" id="aiSendBtn">Send</button>
             </div>
           </div>
           <input type="file" id="aiAttachInput" multiple accept=".csv,.tsv,.tab,.txt,.text,.log,.md,.json,.annot,.annotations,.dat,text/*,application/json" hidden />

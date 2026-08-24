@@ -28,14 +28,15 @@ dialog[open] { animation: dialogIn .18s cubic-bezier(.2,.8,.3,1); }
 /* dropdown (normalization selector) */
 .dropdown { position: relative; }
 .dd-trigger {
-  width: 100%; display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 13px; border-radius: var(--radius-sm); cursor: pointer;
-  background: var(--paper); border: 1px solid var(--line); color: var(--ink);
-  font-family: var(--sans); font-size: 13.5px; font-weight: 500;
-  transition: border-color .12s, box-shadow .12s;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: 28px; padding: 0 9px; cursor: pointer;
+  border: 1px solid transparent; border-radius: 7px;
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent); color: var(--ink);
+  font: 450 11.5px var(--sans); text-align: left;
+  transition: background .12s, border-color .12s;
 }
-.dd-trigger:hover { border-color: var(--muted); }
-.dd-trigger.open { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.12); }
+.dd-trigger:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.dd-trigger.open { background: var(--paper); border-color: color-mix(in srgb, var(--accent) 52%, transparent); }
 .dd-trigger .chev { color: var(--ink-soft); transition: transform .15s; }
 .dd-trigger.open .chev { transform: rotate(180deg); }
 .dd-menu {
@@ -88,33 +89,40 @@ dialog[open] { animation: dialogIn .18s cubic-bezier(.2,.8,.3,1); }
 .cs-item[disabled]:hover { background: transparent; }
 
 /* segmented (differencing) */
-.segmented { display: flex; gap: 4px; background: var(--panel); padding: 3px; border-radius: var(--radius-sm); }
+.segmented {
+  display: flex; gap: 2px; padding: 2px; border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 4.5%, transparent);
+}
 .segmented button {
-  flex: 1; border: 0; background: transparent; cursor: pointer; padding: 7px 0;
-  border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink-soft); font-family: var(--sans);
-  transition: background .12s, color .12s;
+  flex: 1; min-width: 0; height: 24px; border: 0; background: transparent; cursor: pointer; padding: 0 6px;
+  border-radius: 6px; font: 500 11px var(--sans); color: var(--ink-soft);
+  transition: background .13s, color .13s, box-shadow .13s;
 }
 .segmented button:hover { color: var(--ink); }
-.segmented button.active { background: var(--paper); color: var(--accent-ink); box-shadow: var(--shadow-sm); font-weight: 600; }
+.segmented button.active {
+  background: var(--paper); color: var(--ink); font-weight: 500;
+  box-shadow: 0 1px 2px rgba(29,27,22,.07);
+}
 
-.hint { font-size: 11.5px; line-height: 1.5; color: var(--ink-soft); margin: 11px 0 0; }
+.hint { font-size: 10.5px; line-height: 1.45; color: var(--muted); margin: 8px 0 0; }
 
 /* normalization formula + params */
+/* The formula belongs to the setting above it, not in a framed exhibit box: it
+   is a caption, so it sits on the hairline in the panel's own serif and stays out
+   of the way of the controls. */
 .formula-card {
-  margin-top: 11px; padding: 14px 12px; border-radius: var(--radius-sm);
-  background: var(--paper); border: 1px solid var(--line);
-  display: flex; align-items: center; justify-content: center;
-  min-height: 52px; overflow-x: auto;
+  margin-top: 8px; padding: 7px 0 0; border: 0; border-top: 1px solid var(--line);
+  background: none; display: flex; align-items: center; min-height: 0; overflow-x: auto;
 }
 .formula-card math {
-  font-size: 1.15rem; color: var(--ink);
+  font-size: 1rem; color: var(--ink-soft);
   font-family: "Fraunces", Georgia, serif;
 }
 .formula-card msup > mo, .formula-card math mi { font-style: italic; }
 .norm-params { margin-top: 12px; }
 .prow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
-.plabel { font-size: 12.5px; font-weight: 500; color: var(--ink); }
-.pval { font-size: 12px; color: var(--ink-soft); font-family: var(--mono); }
+.plabel { font: 450 11.5px var(--sans); color: var(--ink-soft); }
+.pval { font: 500 11.5px var(--mono); color: var(--ink); }
 .seg-mini { display: flex; gap: 3px; background: var(--panel); padding: 3px; border-radius: 8px; }
 .seg-mini button {
   border: 0; background: transparent; cursor: pointer; padding: 5px 11px; border-radius: 6px;

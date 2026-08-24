@@ -90,47 +90,58 @@ html, body {
 .ctl-group h2 .muted { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-size: 11px; margin-left: auto; }
 
 /* sliders */
-.ctrl { margin-bottom: 16px; }
+/* Parameter rows read as a spec sheet: name left, value right in mono, a hairline
+   scale underneath. The old form — 13px label, value in a filled pill, and a 16px
+   circular thumb that grew and glowed on hover — is consumer-app furniture; an
+   instrument shows the NUMBER and keeps the control itself nearly invisible. */
+.ctrl { margin-bottom: 13px; }
 .ctrl:last-child { margin-bottom: 0; }
-.ctrl .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
-.ctrl label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.ctrl .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.ctrl label { font: 450 11.5px var(--sans); color: var(--ink-soft); }
 .ctrl .val {
-  font-size: 11.5px; color: var(--accent-ink); font-family: var(--mono); font-weight: 500;
-  background: var(--panel); padding: 2px 8px; border-radius: 100px; letter-spacing: -.01em;
+  font: 500 12px var(--mono); color: var(--ink); letter-spacing: -.02em;
+  background: none; padding: 0; border-radius: 0;
 }
 
 input[type="range"] {
-  -webkit-appearance: none; appearance: none; width: 100%; height: 5px;
-  border-radius: 99px; outline: none; cursor: pointer;
-  background: linear-gradient(to right, var(--accent) var(--p, 0%), var(--panel) var(--p, 0%));
+  -webkit-appearance: none; appearance: none; width: 100%; height: 14px;
+  outline: none; cursor: ew-resize; background: transparent;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px; border-radius: 99px;
+  background: linear-gradient(to right, var(--ink-soft) var(--p, 0%), color-mix(in srgb, var(--ink) 11%, transparent) var(--p, 0%));
 }
 input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
-  background: var(--paper); border: 3px solid var(--accent); box-shadow: var(--shadow-sm);
-  cursor: grab; transition: transform .1s ease, box-shadow .1s ease;
+  -webkit-appearance: none; width: 3px; height: 13px; margin-top: -5px; border-radius: 2px;
+  background: var(--ink); border: 0; box-shadow: none;
+  transition: background .12s ease, transform .1s ease;
 }
-input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.12); box-shadow: 0 0 0 5px rgba(199,95,62,.14); }
-input[type="range"]:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.05); }
+input[type="range"]:hover::-webkit-slider-thumb { background: var(--accent); }
+input[type="range"]:active::-webkit-slider-thumb { background: var(--accent); transform: scaleY(1.15); }
+input[type="range"]:hover::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, var(--accent) var(--p, 0%), color-mix(in srgb, var(--ink) 11%, transparent) var(--p, 0%));
+}
 input[type="range"]::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--accent);
-  background: var(--paper); box-shadow: var(--shadow-sm); cursor: grab;
+  width: 3px; height: 13px; border-radius: 2px; border: 0;
+  background: var(--ink); box-shadow: none;
 }
-input[type="range"]::-moz-range-progress { background: var(--accent); height: 5px; border-radius: 99px; }
-input[type="range"]::-moz-range-track { background: var(--panel); height: 5px; border-radius: 99px; }
+input[type="range"]:hover::-moz-range-thumb { background: var(--accent); }
+input[type="range"]::-moz-range-progress { background: var(--ink-soft); height: 3px; border-radius: 99px; }
+input[type="range"]::-moz-range-track { background: color-mix(in srgb, var(--ink) 11%, transparent); height: 3px; border-radius: 99px; }
 input[type="range"]:focus-visible { outline: none; }
-input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(199,95,62,.18); }
-input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(199,95,62,.18); }
+input[type="range"]:focus-visible::-webkit-slider-thumb { background: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.18); }
+input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.18); }
 
 .switch-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  font-size: 13px; font-weight: 500; color: var(--ink);
-  padding: 8px 0; cursor: pointer;
+  font: 450 11.5px var(--sans); color: var(--ink-soft);
+  padding: 6px 0; cursor: pointer;
 }
 /* pill toggle — same geometry as the agent skill toggles (30×18, 12px knob) */
 .switch-row input {
   appearance: none; -webkit-appearance: none; margin: 0; flex: 0 0 auto;
   width: 30px; height: 18px; border-radius: 999px; position: relative; cursor: pointer;
-  background: rgba(180,171,154,.55); border: 1px solid rgba(165,154,135,.6);
+  background: color-mix(in srgb, var(--ink) 14%, transparent); border: 0;
   transition: background .15s, border-color .15s;
 }
 .switch-row input::after {
@@ -142,75 +153,104 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba
 .switch-row input:checked::after { transform: translateX(12px); }
 .switch-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+/* Shouting every field name in uppercase letterspaced caps is what made this
+   panel read as a web form. Sentence case, one weight, the control does the work. */
 .mini-field {
-  display: flex; flex-direction: column; gap: 6px;
-  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 10px;
+  font: 450 11.5px var(--sans); letter-spacing: 0; text-transform: none;
   color: var(--ink-soft);
 }
-.mini-field.full { margin-top: 10px; }
+.mini-field.full { margin-top: 9px; }
 .mini-field input, .mini-field select, .search-input {
-  width: 100%; border: 1px solid var(--line); border-radius: 8px;
-  background: var(--paper); color: var(--ink); outline: none;
-  font-family: var(--sans); font-size: 12.5px; font-weight: 500;
-  padding: 8px 9px;
+  flex: 1 1 auto; min-width: 0; width: 100%;
+  height: 28px; border: 1px solid transparent; border-radius: 7px;
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent); color: var(--ink); outline: none;
+  font-family: var(--sans); font-size: 11.5px; font-weight: 450;
+  padding: 0 9px;
+  transition: background .12s, border-color .12s;
+}
+.mini-field input { font-family: var(--mono); text-align: right; }
+.mini-field input:hover, .mini-field select:hover, .search-input:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 .mini-field input:focus, .mini-field select:focus, .search-input:focus {
-  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(199,95,62,.12);
+  background: var(--paper);
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+  box-shadow: none;
 }
 .mini-field select {
-  appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 30px;
+  appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 26px;
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b6760" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>');
-  background-repeat: no-repeat; background-position: right 10px center;
+  background-repeat: no-repeat; background-position: right 8px center;
 }
 .search-input {
-  margin-bottom: 10px; background-repeat: no-repeat; background-position: left 9px center;
-  padding-left: 30px;
+  margin-bottom: 9px; background-repeat: no-repeat; background-position: left 9px center;
+  padding-left: 28px; text-align: left; font-family: var(--sans);
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="%23a8a499" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>');
 }
 
-/* filter presets + frequency-response curve */
-.filter-presets { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 11px; }
+/* Filter bands are a mutually exclusive choice, so they get the segmented-cell
+   look, not five floating pills — and the selected one is marked by contrast,
+   not by flooding it with the accent colour. */
+.filter-presets {
+  display: flex; gap: 2px; padding: 2px; margin-bottom: 9px;
+  border-radius: 8px; background: color-mix(in srgb, var(--ink) 4.5%, transparent);
+}
 .filter-presets button {
-  border: 1px solid var(--line); border-radius: 100px; background: var(--paper);
-  color: var(--ink-soft); cursor: pointer; font-family: var(--sans);
-  font-size: 11px; font-weight: 600; padding: 4px 10px;
-  transition: border-color .12s, color .12s, background .12s;
+  flex: 1 1 0; min-width: 0; height: 24px; padding: 0 2px;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--ink-soft); cursor: pointer;
+  /* five cells have to survive the 250px minimum sidebar */
+  font: 500 10px var(--sans); letter-spacing: -.012em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background .13s, color .13s, box-shadow .13s;
 }
-.filter-presets button:hover { border-color: var(--accent); color: var(--accent-ink); }
-.filter-presets button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.filter-presets button:hover { color: var(--ink); }
+.filter-presets button.active {
+  background: var(--paper); color: var(--ink);
+  box-shadow: 0 1px 2px rgba(29,27,22,.07);
+}
+/* the response curve is data: let it sit on the paper without a frame */
 .filter-response {
-  display: block; width: 100%; height: 48px; margin-bottom: 11px;
-  background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+  display: block; width: 100%; height: 46px; margin-bottom: 10px;
+  background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
 }
+
+/* One button language across the workspace: 28px, hairline, ink text, accent on
+   hover. Full-width 12.5px semibold blocks read as a signup form. */
 .wide-btn {
-  width: 100%; margin-top: 8px; border: 1px solid var(--line);
-  border-radius: 9px; background: var(--paper); color: var(--ink);
-  font-family: var(--sans); font-size: 12.5px; font-weight: 600;
-  padding: 8px 10px; cursor: pointer;
+  width: 100%; margin-top: 8px; height: 28px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--paper); color: var(--ink);
+  font: 500 11.5px var(--sans); padding: 0 10px; cursor: pointer;
+  transition: border-color .13s, background .13s, color .13s;
 }
-.wide-btn { transition: border-color .12s, background .12s, color .12s; }
-.wide-btn:hover, .action-row button:hover { border-color: var(--accent); color: var(--accent-ink); }
+.wide-btn:hover, .action-row button:hover {
+  color: var(--accent-ink);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: rgba(199,95,62,.05);
+}
 .wide-btn.ghost { background: transparent; }
-.action-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.action-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 8px; }
 .action-row button {
-  border: 1px solid var(--line); border-radius: 8px; background: var(--paper);
-  color: var(--ink); font-family: var(--sans); font-size: 12px; font-weight: 600;
-  padding: 7px 0; cursor: pointer; transition: border-color .12s, color .12s;
+  height: 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper);
+  color: var(--ink); font: 500 11.5px var(--sans);
+  padding: 0; cursor: pointer; transition: border-color .13s, color .13s, background .13s;
 }
+/* the selected channel is a readout, not a notification card */
 .selected-card {
-  margin-top: 10px; padding: 10px 11px 10px 12px; border-radius: 9px;
-  background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--accent);
-  color: var(--ink-soft); font-size: 12px; line-height: 1.5;
+  margin-top: 10px; padding: 9px 0 0; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; background: none;
+  color: var(--ink-soft); font-size: 11px; line-height: 1.5;
 }
-.selected-card b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 2px; }
-.selected-card .accent { color: var(--accent-ink); font-family: var(--mono); font-weight: 600; }
+.selected-card b { display: block; color: var(--ink); font: 500 12px var(--sans); margin-bottom: 2px; }
+.selected-card .accent { color: var(--ink); font-family: var(--mono); font-weight: 500; }
 
 /* legend */
 .legend { display: flex; flex-direction: column; gap: 1px; }
 .legend .item {
-  display: flex; align-items: center; gap: 10px; font-size: 13px;
+  display: flex; align-items: center; gap: 9px; font-size: 11.5px;
   cursor: pointer; user-select: none; color: var(--ink);
-  padding: 6px 8px; margin: 0 -8px; border-radius: 8px;
+  padding: 5px 8px; margin: 0 -8px; border-radius: 7px;
   transition: background .1s; position: relative;
 }
 .legend .item:hover { background: var(--panel); }

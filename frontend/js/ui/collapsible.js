@@ -33,10 +33,10 @@ const MONTAGE_SHORT = {
   raw: "Raw", bipolar: "Bipolar", car: "CAR", "group-car": "Group CAR", local: "Local",
 };
 
+// The view stage no longer owns the montage — that is a processing stage and now
+// sits on the chain in the position where it actually happens.
 function displayMeta() {
-  const gain = text("gainVal");
-  const montage = MONTAGE_SHORT[$("montageMode")?.value] || "";
-  return [gain, montage].filter(Boolean).join(" · ");
+  return [text("gainVal"), text("rowVal")].filter(Boolean).join(" · ");
 }
 function filterMeta() {
   const low = parseFloat($("filterLow")?.value) || 0;
@@ -71,10 +71,62 @@ function runtimeMeta() {
   return [steps && `${steps} steps`, imgs && `${imgs} img`].filter(Boolean).join(" · ");
 }
 
+function montageMeta() {
+  return MONTAGE_SHORT[$("montageMode")?.value] || "Raw";
+}
+
 const META = {
-  display: displayMeta, filters: filterMeta, transform: transformMeta, image: imageMeta,
-  provider: providerMeta, runtime: runtimeMeta,
+  display: displayMeta, montage: montageMeta, filters: filterMeta, transform: transformMeta,
+  image: imageMeta, provider: providerMeta, runtime: runtimeMeta,
 };
+
+// ---- the signal chain ------------------------------------------------------
+// A stage is "engaged" when it actually changes the samples. This is the one bit
+// of state the panel exists to communicate: a morphology reading is only
+// meaningful together with the chain that produced it.
+const STAGE_ENGAGED = {
+  filters: () => {
+    const low = parseFloat($("filterLow")?.value) || 0;
+    const high = parseFloat($("filterHigh")?.value) || 0;
+    const notch = $("filterNotch")?.value;
+    return low > 0 || high > 0 || notch === "50" || notch === "60";
+  },
+  montage: () => ($("montageMode")?.value || "raw") !== "raw",
+  transform: () => {
+    const norm = (text("normCurrent") || "Raw").toLowerCase() !== "raw";
+    const diff = document.querySelector("#diffSeg button.active")?.dataset.n;
+    return norm || (diff && diff !== "0");
+  },
+  display: () => true,   // the view stage is always part of the path
+};
+
+// Read left to right: what happened to these samples, in order.
+const RECIPE = [
+  { id: "filters", label: filterMeta, off: "no filter" },
+  { id: "montage", label: montageMeta, off: "raw ref" },
+  { id: "transform", label: transformMeta, off: "raw" },
+];
+
+function refreshChain() {
+  const chain = document.querySelector("[data-chain]");
+  if (!chain) return;
+  for (const section of chain.querySelectorAll(".ws-section[data-ws-section]")) {
+    const id = section.dataset.wsSection;
+    const engaged = STAGE_ENGAGED[id];
+    if (engaged) section.dataset.active = engaged() ? "on" : "off";
+  }
+  const line = document.getElementById("chainRecipe");
+  if (!line) return;
+  line.innerHTML = RECIPE.map((stage) => {
+    const on = STAGE_ENGAGED[stage.id]?.();
+    const value = on ? stage.label() : stage.off;
+    return `<span class="${on ? "on" : "off"}">${escapeText(value)}</span>`;
+  }).join('<span class="off"> → </span>');
+}
+
+function escapeText(value) {
+  return String(value ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
 const COUNT = {
   events: () => {
     const rows = document.querySelectorAll("#markerList .marker-row").length;
@@ -100,6 +152,7 @@ let sections = [];
 
 export function refreshWsMeta() {
   sections.forEach(refreshSection);
+  refreshChain();
 }
 
 // ---- collapse mechanics -------------------------------------------------------
@@ -170,15 +223,17 @@ export function initCollapsibles({ onExpand } = {}) {
     });
 
     // keep the header readout fresh as this section's own controls change
-    section.addEventListener("input", () => refreshSection(section));
-    section.addEventListener("change", () => refreshSection(section));
+    section.addEventListener("input", () => { refreshSection(section); refreshChain(); });
+    section.addEventListener("change", () => { refreshSection(section); refreshChain(); });
     section.addEventListener("click", (event) => {
       if (event.target.closest(".ws-toggle")) return;
       refreshSection(section);
+      refreshChain();
     });
 
     refreshSection(section);
   });
+  refreshChain();
 
   // event / skill rows are re-rendered wholesale, and the agent hydrates its
   // model list async — observe them so header readouts stay live without events

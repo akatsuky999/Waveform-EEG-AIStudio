@@ -1,4 +1,5 @@
 // channels.js — electrode-group legend, channel tools (search/sort/solo/pin/
+import { renderElectrodeMap } from "./electrode-map.js";
 // hide), analysis toggles, structured event editor, file metadata, channel summary.
 
 import { $, escapeHtml } from "../core/util.js";
@@ -12,6 +13,22 @@ const ATTR_LABELS = {
 
 export function initChannels(ctx) {
   const viewer = ctx.viewer;
+
+  // The electrode map is the primary channel affordance: geometry first, list
+  // second. It redraws when the channel model changes (a montage rebuilds the
+  // channel set) and when amplitudes are recomputed.
+  function drawElectrodeMap() {
+    if (!viewer.header) return;
+    renderElectrodeMap($("electrodeMap"), {
+      channelMeta: viewer.channelMeta,
+      // channelStats holds spectral features; amplitude lives on channelMeta.std
+      // (per-channel SD, which is what "how hot is this contact" means here).
+      values: (viewer.channelMeta || []).map((meta) => Number(meta?.std) || 0),
+      selected: viewer.selectedChannel,
+      hidden: viewer.hiddenChannels || new Set(),
+      onSelect: (index) => viewer.selectChannel(index, true),
+    });
+  }
 
   function buildLegend(header) {
     const counts = {};
@@ -102,6 +119,7 @@ export function initChannels(ctx) {
 
   function updateChannelSummary(state) {
     if (!viewer.header) return;
+    drawElectrodeMap();
     const parts = [`${state.visible}/${state.total} shown`];
     if (state.montage) parts.push(state.montageLabel || "montage");
     if (state.hidden) parts.push(`${state.hidden} hidden`);
@@ -130,11 +148,12 @@ export function initChannels(ctx) {
   });
   $("addMarkerBtn").addEventListener("click", () => focusEventEditor(viewer.addMarker().id));
 
-  ctx.buildLegend = buildLegend;
+  ctx.buildLegend = (header) => { buildLegend(header); drawElectrodeMap(); };
+  ctx.drawElectrodeMap = drawElectrodeMap;
   ctx.buildAttrs = buildAttrs;
   ctx.renderMarkers = () => renderEvents(viewer.events);
   ctx.renderEvents = renderEvents;
   ctx.focusEventEditor = focusEventEditor;
   ctx.updateChannelSummary = updateChannelSummary;
-  return { buildLegend, buildAttrs, renderEvents, focusEventEditor, updateChannelSummary };
+  return { buildLegend, buildAttrs, renderEvents, focusEventEditor, updateChannelSummary, drawElectrodeMap };
 }

@@ -170,84 +170,169 @@
 #exportPanel .check-row input:disabled { opacity: .45; cursor: not-allowed; }
 .dimension-option span { color: #837e6f; font: 10px var(--mono); }
 
+/* ============================================================== the signal chain
+   The panel is not a stack of settings cards; it IS the signal path. Stages sit
+   on one spine in the order the samples actually travel — filter, montage,
+   transform, view — and the spine LIGHTS UP through the stages that are engaged.
+   A glance answers the question that decides whether a morphology claim means
+   anything: what has been done to this signal? Bypassed stages recede; the live
+   path is the only thing wearing the accent. */
+.chain { position: relative; display: flex; flex-direction: column; gap: 5px; }
+/* the spine: one hairline running the height of the chain, behind the nodes */
+.chain::before {
+  content: ""; position: absolute; left: 14px; top: 34px; bottom: 26px; width: 1px;
+  background: var(--line); z-index: 0;
+}
+.chain > .ws-section { position: relative; z-index: 1; }
+
+.chain-head { padding: 2px 2px 8px 30px; }
+.chain-eyebrow {
+  display: block; font: 500 8.5px var(--mono); letter-spacing: .18em;
+  text-transform: uppercase; color: var(--muted);
+}
+/* the whole chain as one sentence — the line you would cite in a report */
+.chain-recipe {
+  margin: 5px 0 0; font: 400 11.5px var(--mono); line-height: 1.55;
+  color: var(--ink-soft); letter-spacing: -.01em;
+}
+.chain-recipe .on { color: var(--accent-ink); }
+.chain-recipe .off { color: var(--muted); }
+
+/* stage head: node on the spine, ordinal, serif name, live value */
+.chain .ws-toggle { position: relative; padding-left: 30px; gap: 8px; }
+.chain .stage-node {
+  position: absolute; left: 10px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px;
+  border-radius: 50%; background: var(--ws-card);
+  box-shadow: inset 0 0 0 1px var(--muted);
+  transition: box-shadow .18s ease, background .18s ease;
+}
+.chain .stage-no {
+  font: 500 8.5px var(--mono); letter-spacing: .08em; color: var(--muted);
+  transition: color .18s ease;
+}
+.chain .stage-name {
+  font-family: var(--serif); font-size: 14px; font-weight: 500; letter-spacing: -.005em;
+  color: var(--ink);
+}
+.chain .stage-sub {
+  font: 400 9.5px var(--mono); letter-spacing: .04em; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.chain .ws-meta { margin-left: auto; }
+
+/* engaged: the node fills, the ordinal inks, and the spine segment above it
+   turns clay — so the accent traces the path the samples take */
+.chain .ws-section[data-active="on"] .stage-node {
+  background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(199, 95, 62, .12);
+}
+.chain .ws-section[data-active="on"] .stage-no { color: var(--accent-ink); }
+.chain .ws-section[data-active="on"] .ws-meta { color: var(--accent-ink); }
+.chain .ws-section[data-active="on"]::before {
+  content: ""; position: absolute; left: -16px; top: -5px; bottom: 50%; width: 1px;
+  background: linear-gradient(to bottom, var(--accent), var(--accent));
+  opacity: .55;
+}
+.chain .ws-section:first-of-type[data-active="on"]::before { top: 0; }
+
+/* bypassed stages step back without disappearing */
+.chain .ws-section[data-active="off"] .stage-name { color: var(--ink-soft); }
+.chain .ws-section[data-active="off"] .ws-meta { color: var(--muted); }
+
+/* the terminal stage closes the path with a solid cap */
+.chain .ws-section[data-stage-terminal] .stage-node {
+  background: var(--ink); box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+/* a labelled hairline separates the pipeline from everything that is not one */
+.zone-rule {
+  display: flex; align-items: center; gap: 10px; margin: 16px 2px 6px;
+  color: var(--muted);
+}
+.zone-rule::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
+.zone-rule span {
+  font: 500 8.5px var(--mono); letter-spacing: .18em; text-transform: uppercase;
+}
+
 /* ====================================================== signal workspace cards */
-/* filter presets: quiet chips, clay when active */
-#rail .filter-presets { gap: 6px; margin: 2px 0 12px; }
-#rail .filter-presets button {
-  border: 1px solid transparent; background: var(--ws-well);
-  color: #6d6859; font-size: 10.5px; font-weight: 600; padding: 5px 11px;
-}
-#rail .filter-presets button:hover { background: #fff; border-color: #ddb5a4; color: var(--accent-ink); }
-#rail .filter-presets button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* This layer used to re-inflate everything the base primitives had just slimmed
+   down: 15px round slider thumbs, a framed formula box, a clay-filled active
+   preset, dashed ghost buttons, and a dozen hardcoded hexes. The panel is an
+   instrument — the controls recede, the NUMBERS and the waveform carry the
+   design. Everything below is expressed in tokens so one palette change moves
+   the whole workspace. */
 
+/* band presets: one recessed track, selection marked by contrast not by fill */
+#rail .filter-presets { margin: 2px 0 10px; }
+#rail .filter-presets button { color: var(--ink-soft); }
+/* "Off" is a reset, not a band: it only needs its own three letters, which buys
+   the four clinical bands the width they need at the narrowest sidebar. */
+#rail .filter-presets button[data-notch="off"] { flex: 0 0 30px; }
+#rail .filter-presets button:hover { color: var(--ink); background: transparent; border: 0; }
+#rail .filter-presets button.active {
+  background: var(--paper); color: var(--ink); border: 0;
+  box-shadow: 0 1px 2px rgba(29, 27, 22, .07);
+}
+
+/* the response curve is a reading, not a framed picture */
 #rail .filter-response {
-  height: 56px; margin-bottom: 13px;
-  border: 1px solid var(--ws-well-line); border-radius: 10px; background: #fff;
+  height: 52px; margin-bottom: 11px;
+  border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none;
 }
 
-/* normalization formula: quiet math on paper */
+/* normalization formula: a caption on the hairline */
 #rail .formula-card {
-  margin-top: 11px; min-height: 48px; padding: 12px;
-  border: 1px solid var(--ws-well-line); border-radius: 10px; background: #fff;
+  margin-top: 9px; min-height: 0; padding: 8px 0 0;
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none;
 }
-#rail .norm-params { margin-top: 12px; }
-#rail .prow { margin-bottom: 8px; }
-#rail .plabel { font-size: 12px; }
+#rail .norm-params { margin-top: 10px; }
+#rail .prow { margin-bottom: 7px; }
+#rail .plabel { font-size: 11.5px; }
 
-/* segmented tracks recessed into the card */
-#rail .segmented, #rail .seg-mini { background: var(--ws-well); }
+#rail .segmented, #rail .seg-mini { background: color-mix(in srgb, var(--ink) 4.5%, transparent); }
 
 /* channel tools */
 #rail .search-input { margin-bottom: 0; }
 #rail .selected-card {
-  margin-top: 13px; padding: 10px 12px;
-  border: 1px solid var(--ws-well-line); border-left: 3px solid var(--accent);
-  border-radius: 10px; background: #fff;
-  font-size: 11.5px; line-height: 1.5;
+  margin-top: 11px; padding: 9px 0 0;
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none;
+  font-size: 11px; line-height: 1.5;
 }
-/* Solo · Pin · Hide as one joined instrument switch, not three loose buttons */
+
+/* Solo · Pin · Hide read as one switch: a single hairline frame, divided */
 #rail .action-row {
-  gap: 0; margin-top: 10px;
-  border: 1px solid #e4dfcf; border-radius: 9px; overflow: hidden; background: #fff;
+  gap: 0; margin-top: 9px;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--paper);
 }
 #rail .action-row button {
-  padding: 8px 0; border: 0; border-radius: 0; background: transparent;
-  font-size: 11.5px; font-weight: 600; color: #565146;
+  height: 26px; padding: 0; border: 0; border-radius: 0; background: transparent;
+  font: 500 11px var(--sans); color: var(--ink-soft);
 }
-#rail .action-row button + button { border-left: 1px solid #eee9db; }
+#rail .action-row button + button { border-left: 1px solid var(--line); }
 #rail .action-row button:hover { background: rgba(199, 95, 62, .06); color: var(--accent-ink); }
 
-#rail .wide-btn { border-color: #e4dfcf; border-radius: 9px; font-size: 12px; }
-#rail .wide-btn.ghost { color: var(--ink-soft); border-style: dashed; }
-#rail .wide-btn.ghost:hover { color: var(--accent-ink); border-style: solid; }
+#rail .wide-btn { border-color: var(--line); border-radius: 8px; font-size: 11.5px; }
+#rail .wide-btn.ghost { color: var(--ink-soft); border-style: solid; background: transparent; }
+#rail .wide-btn.ghost:hover { color: var(--accent-ink); }
 
-/* finer slider hardware */
-#rail input[type="range"] { height: 4px; }
-#rail input[type="range"]::-webkit-slider-thumb {
-  width: 15px; height: 15px; border-width: 2.5px;
-}
-#rail input[type="range"]::-moz-range-thumb {
-  width: 15px; height: 15px; border-width: 2.5px;
-}
-#rail input[type="range"]::-moz-range-progress,
-#rail input[type="range"]::-moz-range-track { height: 4px; }
-
-/* legend sits in a soft well so the channel list reads as one instrument row */
+/* legend: a plain list on the card, scrolled — the inset "well" turned a channel
+   list into a widget inside a widget */
 .ws-legend-well {
-  margin-top: 13px; padding: 5px 7px;
-  border: 1px solid var(--ws-well-line); border-radius: 10px; background: var(--ws-well);
-  max-height: 228px; overflow-y: auto;
-  scrollbar-width: thin; scrollbar-color: #d9d3c2 transparent;
+  margin-top: 11px; padding: 4px 0 0;
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none;
+  max-height: 232px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
 }
 .ws-legend-well::-webkit-scrollbar { width: 8px; }
-.ws-legend-well::-webkit-scrollbar-thumb { background: #d9d3c2; border: 2px solid var(--ws-well); border-radius: 8px; }
-.ws-legend-well .legend .item { margin: 0; padding: 5.5px 8px; font-size: 12.5px; }
-.ws-legend-well .legend .item:hover { background: rgba(255, 255, 255, .75); }
-.ws-legend-well .legend .count { background: rgba(255, 255, 255, .8); }
+.ws-legend-well::-webkit-scrollbar-thumb {
+  background: var(--line); border: 2px solid var(--ws-card); border-radius: 8px;
+}
+.ws-legend-well .legend .item { margin: 0; padding: 5px 7px; font-size: 11.5px; }
+.ws-legend-well .legend .item:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.ws-legend-well .legend .count { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
 /* events + file metadata */
-#rail .marker-list > span { color: var(--muted); font-size: 11.5px; }
-#rail .marker-row { background: var(--ws-well); }
+#rail .marker-list > span { color: var(--muted); font-size: 11px; }
+#rail .marker-row { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
 #rail .attr-list { font-size: 11px; gap: 8px; }
 #rail .attr-list .a span:last-child { font-size: 10.5px; }
 
@@ -257,8 +342,8 @@
   background: var(--ws-card); border: 1px solid var(--ws-card-line);
   border-radius: 12px; box-shadow: var(--ws-shadow);
 }
-#analysisPanel .analysis-head b { font-family: var(--serif); font-size: 14.5px; font-weight: 500; }
-#analysisPanel #analysisCanvas { border-color: var(--ws-well-line); border-radius: 10px; }
+#analysisPanel .analysis-head b { font-family: var(--serif); font-size: 14px; font-weight: 500; }
+#analysisPanel #analysisCanvas { border-color: var(--line); border-radius: 9px; }
 
 /* ====================================================== output workbench cards */
 /* hero action — the one-click export */
@@ -382,3 +467,59 @@
   from { opacity: 0; transform: translateY(3px); }
   to   { opacity: 1; transform: none; }
 }
+
+/* ============================================================ electrode map
+   The recording's own geometry, drawn from the labels: SEEG shanks run their
+   contacts deep→lateral, scalp studies fall back to the 10-20 head. Fill
+   opacity carries live amplitude, so the map reads as a topographic snapshot
+   rather than a legend — hot contacts are visible before any channel is opened.
+   Hairlines and one accent only; the electrodes are the drawing. */
+.electrode-map-wrap { margin: 0 0 11px; }
+.electrode-map-wrap.hidden { display: none; }
+.electrode-map { display: block; width: 100%; overflow: visible; }
+
+.electrode-map .em-label {
+  font: 500 9px var(--mono); fill: var(--muted); letter-spacing: .02em;
+}
+.electrode-map .em-shaft { stroke: var(--line); stroke-width: 1; }
+.electrode-map .em-head { fill: none; stroke: var(--line); stroke-width: 1; }
+
+.electrode-map .em-contact { cursor: pointer; }
+.electrode-map .em-fill { fill: var(--accent); }
+.electrode-map .em-ring {
+  fill: none; stroke: var(--muted); stroke-width: 1; stroke-opacity: .5;
+  transition: stroke .12s ease, stroke-width .12s ease;
+}
+.electrode-map .em-contact:hover .em-ring { stroke: var(--ink); stroke-opacity: 1; }
+.electrode-map .em-contact.is-selected .em-ring { stroke: var(--ink); stroke-width: 2; stroke-opacity: 1; }
+.electrode-map .em-contact.is-hidden .em-fill { fill: var(--muted); fill-opacity: .12 !important; }
+.electrode-map .em-contact:focus { outline: none; }
+.electrode-map .em-contact:focus-visible .em-ring { stroke: var(--accent); stroke-width: 2; stroke-opacity: 1; }
+
+.em-caption {
+  margin: 7px 0 0; font: 400 9.5px var(--mono); letter-spacing: .02em; color: var(--muted);
+}
+.electrode-map .em-contact.is-derivation .em-ring { stroke-opacity: .38; }
+.electrode-map .em-contact.is-derivation.is-selected .em-ring { stroke: var(--ink); stroke-width: 1.6; stroke-opacity: 1; }
+.electrode-map .em-link { stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; }
+.electrode-map .em-contact.is-chain:hover .em-link { stroke: var(--ink); }
+.electrode-map .em-contact.is-chain.is-selected .em-link { stroke: var(--ink); stroke-width: 3.2; }
+
+/* head map: report-style geometry — nasion up, dashed standard planes */
+.electrode-map .em-guide {
+  fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4;
+}
+.electrode-map .em-fiducial {
+  font: 500 7.5px var(--mono); letter-spacing: .12em; fill: var(--muted);
+}
+.electrode-map .em-site {
+  font: 500 7px var(--mono); fill: var(--ink); pointer-events: none;
+}
+.electrode-map .em-contact.tier-inferior .em-ring { stroke-dasharray: 2 2; }
+.electrode-map .em-contact.tier-deepsurface .em-ring { stroke: var(--accent); stroke-opacity: .8; }
+.electrode-map .em-contact.tier-ear .em-ring { stroke-dasharray: 2 2; stroke-opacity: .38; }
+.em-split {
+  display: flex; align-items: center; gap: 9px; margin: 12px 0 9px; color: var(--muted);
+}
+.em-split::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
+.em-split span { font: 500 8.5px var(--mono); letter-spacing: .16em; text-transform: uppercase; }

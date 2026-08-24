@@ -339,3 +339,17 @@
 @media (prefers-reduced-motion: reduce) {
   .tree-spinner { animation-duration: 1.4s; }
 }
+
+/* While a panel is being dragged: no text selection, one cursor everywhere, and
+   no transitions — animated cards chasing the pointer is what made the drag look
+   broken. The class lives on <html> so it covers the stage and the agent drawer. */
+html.is-resizing, html.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+html.is-resizing .ws-section,
+html.is-resizing .ws-body,
+html.is-resizing .sidebar-panel,
+html.is-resizing .ai-drawer,
+html.is-resizing .stage-col { transition: none !important; animation: none !important; }

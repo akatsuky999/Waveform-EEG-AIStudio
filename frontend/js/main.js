@@ -70,7 +70,7 @@ viewer.onReadout = (info) => {
   readoutEl.style.transform =
     `translate(${flipX ? "calc(-100% - 14px)" : "14px"}, ${flipY ? "calc(-100% - 14px)" : "14px"})`;
 };
-viewer.onSelectionChange = (a) => { ctx.renderSelected(a); ctx.renderAnalysis(a); };
+viewer.onSelectionChange = (a) => { ctx.renderSelected(a); ctx.renderAnalysis(a); ctx.drawElectrodeMap?.(); };
 viewer.onAnalysisChange = (a) => ctx.renderAnalysis(a);
 viewer.onEventsChange = (events) => ctx.renderEvents(events);
 viewer.onEventEditRequest = (id) => ctx.focusEventEditor(id);

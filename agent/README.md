@@ -2,6 +2,22 @@
 
 A self-contained AI agent for the Waveform viewer. 
 
+### Shared waveform evidence
+
+The host now exposes `capture_signal_reference`, `search_similar_waveforms` and
+`read_similarity_candidates`. They share a recording-scoped store with the
+Similarity panel, including frozen processing recipes, bounded candidate sets,
+actual search coverage and human review decisions. Searches do not move the
+viewport or write annotations. Agent tools cannot change human reviews.
+
+The panel's **Session evidence** selector restores previous searches and reviews.
+Storage is session-only: export reviews before changing recordings or reloading.
+Capture freezes a recipe, not precomputed samples; successful retrieval adds the
+native reference fingerprint and processing-domain limitations. Scores are not
+calibrated clinical probabilities. Durable jobs, isolated contextual image views,
+transactional annotation proposals and hardened code execution remain future work.
+See `knowledge/signal_workspace.md` for the runtime contract.
+
 ```
 agent/
 ├── backend/

@@ -88,6 +88,61 @@ The bundled `win001.h5` is a deidentified example covered by the separate
 
 ---
 
+## Find similar waveforms
+
+In **Controls → Find similar**, choose a reference channel and a **0.02–10 second**
+reference (at least 8 samples). Alternatively, use **Select on waveform**, drag a
+range and release to capture it automatically. **Use selection** also captures an
+existing measurement. Search that channel or all
+source channels, across the recording or just the current view.
+
+**Current processing** is the default: the native-rate signal is filtered,
+re-referenced and differenced with the viewer's DSP implementation. Display gain
+and positive affine normalization are removed by shape normalization. Select
+**Original unprocessed** for raw-only comparisons. Results retain their processing
+recipe; opening a candidate restores that recipe with at least 2 s of context on
+each side where available. Changing the view does not erase the review queue.
+
+**Elastic morphology** first retrieves normalized-correlation candidates, then
+reranks their 128-point voltage/slope descriptors with constrained DTW (about ±5%
+local alignment, with a penalty on warping). The uncalibrated score is the maximum
+of native correlation and an 80% elastic / 20% correlation blend, so noisy slopes
+cannot veto a strong correlation match. Both components remain inspectable.
+**Strict correlation** retains the fixed-alignment baseline. **Include inverted
+shapes** explicitly permits opposite polarity. Previews overlay unwarped,
+normalized samples, so alignment differences remain visible.
+
+The default **Closest candidates** mode provides a review queue, explicitly marking
+candidates below the score guide. **Only above score threshold** is available;
+neither an empty queue nor a high score establishes a clinical finding.
+
+Mark candidates **Similar** or **Different** to adjust the order using reviewed
+shapes. Click again to undo, or **Reset feedback** to restore the original ranking.
+**Artifact** and **Uncertain** record reviewer assessments; add per-candidate notes
+and **Export review** for a local JSON record of parameters, coverage and decisions.
+Feedback only affects the current pool; a new search, recording or reload clears
+it. It does not train a model or write events. Exported labels and notes may be sensitive.
+
+Search defaults to three nearby window durations (0.8× / 1× / 1.2×); exact duration
+remains available. It retains at most 100 non-overlapping
+results. Elastic refinement is candidate-limited, **not exhaustive DTW**; full scan
+coverage does not imply exhaustive elastic recall. Time/sample budgets and partial
+refinement are explicit. Small recordings use whole-recording DSP; large ranges
+use a shared, bounded, padded native-rate tiling instead of requiring the full
+processed recording in memory. Current view remains useful to complete a scan
+within the budget. Local-context filtering may differ at edges from another viewport or decimated
+overview. It searches samples, not screenshot pixels. Missing processed samples
+are rejected rather than silently interpolated. Scores are **not clinical
+confidence** and have not been validated for clinical event detection.
+
+Channels shows standard scalp positions when labels are recognized, and an ordered
+contact atlas for other numbered groups. Derived reference suffixes no longer hide
+the atlas; unknown channels remain selectable. Label groups and contact numbers
+are **not patient-specific anatomical coordinates**, depth direction or brain-region
+localizations. See [design evidence and limitations](docs/similarity-design.md).
+
+---
+
 ## Using EEG-Master
 
 Open **EEG-Master → Config** and enter an API Base URL, API key, and model. Nothing is

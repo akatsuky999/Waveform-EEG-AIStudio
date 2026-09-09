@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from .config import MAX_UPLOAD_BYTES, SAMPLE_FILE
 from .core import store
+from .core.similarity import search as search_similar
 from .core.envelope import decode_window, detect_kind, pack_envelope
 from .core.exporters import decode_export_array, export_data, export_images, render_image_set
 from .core.util import group_of
@@ -17,6 +19,7 @@ from .core.util import group_of
 # filter/montage changes can't pile up unbounded renders and exhaust memory —
 # light queries (search/aggregate) finish fast, so a small limit is invisible.
 _QUERY_SEMAPHORE = asyncio.Semaphore(4)
+_SIMILARITY_SEMAPHORE = asyncio.Semaphore(1)
 
 
 def _json_error(message: str, status_code: int = 400, **extra) -> JSONResponse:
@@ -27,10 +30,61 @@ def _json_error(message: str, status_code: int = 400, **extra) -> JSONResponse:
 # The agent's Python sandbox reads the decoded window from this cache. The import
 # is soft so the core still works if the agent plugin is removed.
 try:
-    from agent.backend.datastore import new_token, put_dataset
+    from agent.backend.datastore import get_dataset, new_token, put_dataset
 except Exception:  # noqa: BLE001 - plugin is optional
     new_token = None
     put_dataset = None
+    get_dataset = None
+
+
+async def signal_similarity(request: Request) -> Response:
+    """Read-only shape search for both decoded and windowed recordings."""
+    try:
+        spec = await request.json()
+    except ValueError:
+        return _json_error("Expected a JSON request body.")
+    if not isinstance(spec, dict):
+        return _json_error("Search must be a JSON object.")
+    token = spec.get("token")
+    if not isinstance(token, str) or not token:
+        return _json_error("A recording token is required.")
+    handle = store.get_handle(token)
+    # Snapshot once: a concurrent ingest can evict the handle after lookup.
+    array = handle.raw if handle is not None else None
+    if array is not None:
+        # Keep our own reference so LRU eviction cannot invalidate an active read.
+        fs = handle.meta["fs"]
+        labels = [c["label"] for c in handle.meta["channels"]]
+        groups = [c.get("group", "") for c in handle.meta["channels"]]
+    else:
+        dataset = get_dataset(token) if get_dataset else None
+        if dataset is None:
+            return _json_error("Recording cache expired. Reload the file and retry.", 409)
+        array, fs, labels = dataset["array"], dataset["fs"], dataset["labels"]
+        groups = dataset.get("groups", [group_of(label) for label in labels])
+    if _SIMILARITY_SEMAPHORE.locked():
+        return _json_error("Another similarity search is finishing. Retry shortly.", 429)
+    async with _SIMILARITY_SEMAPHORE:
+        cancel = threading.Event()
+        task = asyncio.create_task(asyncio.to_thread(search_similar, array, fs, labels, spec, cancel, groups))
+        try:
+            while not task.done():
+                if await request.is_disconnected():
+                    cancel.set()
+                await asyncio.sleep(0.1)
+            return JSONResponse(task.result())
+        except (ValueError, TypeError, OverflowError) as exc:
+            return _json_error(str(exc))
+        except InterruptedError:
+            return _json_error("Search cancelled.", 499)
+        finally:
+            cancel.set()
+            # Keep the concurrency slot until the worker has actually stopped.
+            if not task.done():
+                try:
+                    await asyncio.shield(task)
+                except (InterruptedError, asyncio.CancelledError):
+                    pass
 
 
 def _envelope_with_cache(raw: bytes, file_name: str) -> bytes:

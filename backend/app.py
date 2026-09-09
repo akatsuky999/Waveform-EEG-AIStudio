@@ -29,7 +29,7 @@ from .core import store
 from .routes import (
     export_data_route, export_images_route, health, parse,
     render_images_route, sample, signal_ingest, signal_meta, signal_query,
-    signal_stats, signal_status, signal_window,
+    signal_stats, signal_status, signal_window, signal_similarity,
 )
 
 
@@ -54,6 +54,7 @@ routes = [
     Route("/api/signal/status", signal_status, methods=["GET"]),
     Route("/api/signal/meta", signal_meta, methods=["GET"]),
     Route("/api/signal/query", signal_query, methods=["POST"]),
+    Route("/api/signal/similarity", signal_similarity, methods=["POST"]),
     Route("/api/signal/window", signal_window, methods=["GET"]),
     Route("/api/signal/stats", signal_stats, methods=["GET"]),
     Route("/api/health", health, methods=["GET"]),

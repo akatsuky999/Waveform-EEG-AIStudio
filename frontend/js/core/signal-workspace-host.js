@@ -166,7 +166,7 @@ function addMergedAIInterval(viewer, onsetSec, offsetSec, label) {
   };
 }
 
-export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) {
+export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample, similarityWorkspace }) {
   // The active conversation id scopes the ephemeral companion-file store on the
   // backend. The agent loop sets it before each run; run_python and the
   // attachment tools tag their requests with it.
@@ -209,6 +209,7 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
 
   const state = () => ({
     ...viewer.buildAIContext(),
+    similarity: similarityWorkspace?.getState() || { available: false },
     project: projectContext(),
     capabilities: {
       projectFiles: explorer.state.permission === "granted",
@@ -727,6 +728,12 @@ export function createSignalWorkspaceHost({ viewer, ui, explorer, loadSample }) 
 
   return {
     signal, workspace, project, artifacts, skills, attachments,
+    // Deliberately omit human review mutators from the agent-facing facade.
+    similarity: similarityWorkspace ? {
+      capture: args => similarityWorkspace.capture(args, "agent"),
+      search: (args, signal) => similarityWorkspace.search(args, { actor: "agent", signal }),
+      read: args => similarityWorkspace.read(args),
+    } : null,
     getWorkspaceConfiguration(agentConfig = null) {
       const ctx = state();
       const view = ctx.view || {};

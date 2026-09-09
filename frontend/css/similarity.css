@@ -1,0 +1,144 @@
+/* Shape study — paper, clay and engraved numerals, shared with the signal chain.
+   A recessed reference specimen, quiet parameter drawers, then a review ledger. */
+#similarityPanel { --similar-positive: #587252; }
+#similarityPanel .hidden { display: none; }
+#similarityPanel .ws-body-inner { padding: 12px 12px 10px; }
+#similarityPanel button, #similarityPanel input { font-family: var(--sans); }
+#similarityPanel button { cursor: pointer; }
+#similarityPanel button:disabled { cursor: default; opacity: .45; }
+#similarityPanel :is(button, summary, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#similarityPanel button svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The reference hierarchy stays fixed from empty to populated. */
+.similar-reference { position: relative; overflow: hidden; padding: 12px 12px 9px; border: 1px solid var(--ws-well-line); border-radius: 8px; background: var(--ws-well); box-shadow: inset 0 1px 3px rgba(29,27,22,.025); }
+.similar-reference-head, .similar-reference-title, .similar-reference-axis { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.similar-reference-head { color: var(--ink-soft); font: 9px var(--mono); letter-spacing: .09em; }
+.similar-raw { display: inline-flex; align-items: center; gap: 5px; font-size: 8px; }
+.similar-raw::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.similar-reference-title { margin-top: 10px; }
+.similar-reference-title b { font: 500 18px/1.2 var(--serif); overflow-wrap: anywhere; }
+.similar-reference-title > span, .similar-reference-axis { font: 9px var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.similar-reference-axis { padding-top: 5px; border-top: 1px solid rgba(168,164,153,.22); }
+.similar-empty-reference { min-height: 100px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 5px; }
+.similar-empty-reference > svg { width: 24px; height: 24px; margin: 6px 0; fill: none; stroke: var(--accent); stroke-width: 1; }
+.similar-empty-reference > span { font: 400 16px var(--serif); color: var(--ink); }
+.similar-empty-reference > small { font: 10px var(--sans); color: var(--ink-soft); }
+.similar-reference::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 1px; background: var(--accent); opacity: 0; pointer-events: none; }
+#similarityPanel[aria-busy="true"] .similar-reference::after { opacity: .55; animation: similar-scan 1.6s ease-in-out infinite; }
+
+/* Drawers are separators, not more cards inside the card. */
+.similar-disclosure { border-bottom: 1px solid var(--line); }
+.similar-disclosure > summary { display: flex; align-items: center; gap: 8px; min-height: 39px; list-style: none; cursor: pointer; font: 11px var(--sans); color: var(--ink-soft); }
+.similar-disclosure > summary::-webkit-details-marker, .similar-method > summary::-webkit-details-marker { display: none; }
+.similar-disclosure > summary::after { content: ""; width: 5px; height: 5px; flex: 0 0 auto; margin: 0 3px 3px 0; border-right: 1px solid var(--muted); border-bottom: 1px solid var(--muted); transform: rotate(45deg); transition: transform .18s; }
+.similar-disclosure[open] > summary::after { transform: rotate(225deg); margin-top: 4px; }
+.similar-disclosure[open] > summary, .similar-disclosure > summary:hover { color: var(--ink); }
+.similar-summary-value { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52%; font: 9px var(--mono); color: var(--muted); }
+.similar-disclosure[open] .similar-summary-value { opacity: 0; }
+.similar-editor { display: grid; gap: 12px; padding: 0 0 13px; }
+.similar-capture-actions { display: grid; grid-template-columns: 1.15fr 1fr; gap: 6px; }
+.similar-capture-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); font-size: 10px; line-height: 1.25; }
+.similar-capture-actions button:first-child { background: var(--paper); }
+.similar-capture-actions button:hover { color: var(--accent-ink); border-color: #cdbca9; }
+.similar-field { display: grid; gap: 5px; min-width: 0; color: var(--ink-soft); font: 10px var(--sans); }
+#rail #similarityPanel .cs-trigger { min-height: 32px; width: 100%; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); font-size: 11px; }
+#similarityPanel .cs { min-width: 0; }
+#similarityPanel .cs-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.similar-time-inputs { display: grid; grid-template-columns: minmax(0,1fr) 12px minmax(0,1fr); align-items: end; gap: 7px; }
+.similar-time-arrow { align-self: end; padding-bottom: 9px; font-size: 11px; color: var(--muted); }
+.similar-input-unit { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); overflow: hidden; }
+#similarityPanel .similar-input-unit input { width: 100%; min-width: 0; border: 0; background: transparent; padding: 8px; color: var(--ink); font: 11px var(--mono); font-variant-numeric: tabular-nums; }
+.similar-input-unit > span { padding-right: 8px; color: var(--muted); font: 9px var(--mono); }
+.similar-input-unit:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(199,95,62,.1); }
+#similarityPanel .similar-input-unit input:focus-visible { outline: none; }
+#similarityPanel input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+#similarityPanel input::-webkit-inner-spin-button, #similarityPanel input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.similar-threshold { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 11px var(--sans); color: var(--ink-soft); }
+.similar-threshold small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+#similarityPanel .similar-threshold input { width: 58px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; background: var(--paper); color: var(--ink); font: 11px var(--mono); text-align: right; }
+.similar-switch { display: flex; position: relative; align-items: center; gap: 8px; min-height: 26px; cursor: pointer; font: 11px var(--sans); color: var(--ink-soft); }
+.similar-switch input { position: absolute; right: 0; width: 28px; height: 18px; margin: 0; opacity: 0; cursor: pointer; }
+.similar-switch-track { margin-left: auto; width: 27px; height: 16px; flex: 0 0 auto; border: 1px solid #d8d1c0; border-radius: 12px; background: var(--ws-well); pointer-events: none; transition: background .18s; }
+.similar-switch-track::before { content: ""; display: block; width: 10px; height: 10px; margin: 2px; border-radius: 50%; background: var(--paper); box-shadow: 0 1px 2px #0002; transition: transform .18s; }
+.similar-switch input:checked + .similar-switch-track { background: var(--accent); border-color: var(--accent); }
+.similar-switch input:checked + .similar-switch-track::before { transform: translateX(11px); }
+.similar-switch input:focus-visible + .similar-switch-track { outline: 2px solid var(--accent); outline-offset: 3px; }
+.similar-switch input:disabled + .similar-switch-track { opacity: .45; }
+
+/* One primary action; stopping remains separately accessible. */
+.similar-search-actions { display: flex; gap: 6px; margin-top: 13px; }
+.similar-primary { display: flex; flex: 1; align-items: center; justify-content: space-between; min-height: 37px; min-width: 0; padding: 9px 12px; border: 1px solid #b85636; border-radius: 7px; color: #fffaf5; background: var(--ws-grad); box-shadow: inset 0 1px 0 #ffffff24, 0 2px 4px #8d3d2014; font-size: 11px; font-weight: 500; transition: box-shadow .18s; }
+.similar-primary:hover:not(:disabled) { background: var(--ws-grad-hover); box-shadow: inset 0 1px 0 #ffffff24, 0 3px 8px #8d3d2025; }
+#similarityPanel[aria-busy="true"] .similar-primary:disabled { opacity: .8; }
+.similar-stop { display: grid; place-items: center; width: 37px; border: 1px solid var(--line); border-radius: 7px; background: var(--ws-well); color: var(--accent-ink); }
+.similar-stop rect { fill: currentColor; stroke: none; }
+.similar-status { margin: 8px 0 0; font: 9px/1.6 var(--mono); color: var(--ink-soft); overflow-wrap: anywhere; }
+.similar-status:empty { display: none; }
+.similar-status.is-error { color: var(--accent-ink); border-left: 2px solid var(--accent); padding-left: 7px; }
+
+/* Review ledger: hairlines and aligned type put the waveforms first. */
+.similar-review { margin-top: 21px; }
+.similar-review-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.similar-review-head h3 { display: flex; align-items: baseline; gap: 8px; margin: 0; font: 500 18px var(--serif); }
+#similarMatchCount { color: var(--accent-ink); font: 10px var(--mono); }
+.similar-text-button { padding: 4px 0; border: 0; background: transparent; color: var(--ink-soft); font-size: 9px; }
+.similar-text-button:hover { color: var(--accent-ink); }
+.similar-legend { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: var(--ink-soft); font: 9px var(--sans); }
+.similar-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.similar-legend span:last-child { margin-left: auto; color: var(--muted); font: 8px var(--mono); }
+.similar-legend i { width: 12px; border-top: 1.5px solid var(--accent); }
+.similar-legend span:nth-child(2) i { border-top: 1px dashed #918c7d; }
+.similar-feedback-summary { margin: 7px 0 10px; color: var(--ink-soft); font: 10px/1.5 var(--sans); }
+.similar-results { display: grid; }
+.similar-match { padding: 12px 0 8px; border-top: 1px solid var(--line); transition: background .18s; }
+.similar-match-head { display: flex; align-items: baseline; gap: 8px; }
+.similar-rank { color: var(--muted); font: 9px var(--mono); min-width: 15px; }
+.similar-match-head b { min-width: 0; overflow-wrap: anywhere; font: 500 13px var(--serif); }
+.similar-score { margin-left: auto; white-space: nowrap; color: var(--ink); font: 11px var(--mono); font-variant-numeric: tabular-nums; }
+.similar-score small { color: var(--muted); font: italic 11px var(--serif); }
+.similar-wave { display: block; width: 100%; height: 64px; margin: 8px 0 5px; overflow: visible; }
+.similar-wave path { fill: none; vector-effect: non-scaling-stroke; }
+.similar-grid { stroke: var(--grid); stroke-width: .7; stroke-dasharray: 2 3; }
+.similar-axis { stroke: var(--line); stroke-width: .7; }
+.similar-trace { stroke: var(--accent); stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
+.similar-overlay { stroke: #918c7d; stroke-width: 1; stroke-dasharray: 3 2; opacity: .65; }
+.similar-reference .similar-wave { height: 66px; }
+.similar-match-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: var(--ink-soft); font: 9px var(--mono); font-variant-numeric: tabular-nums; }
+.similar-inverted { font: 8px var(--sans); color: var(--accent-ink); }
+.similar-match-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; gap: 8px; }
+.similar-votes { display: flex; gap: 4px; }
+.similar-match-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 5px; min-height: 28px; border: 1px solid transparent; border-radius: 5px; color: var(--ink-soft); background: transparent; font-size: 10px; transition: color .15s, background .15s, border-color .15s; }
+#similarityPanel .similar-votes svg { width: 12px; height: 12px; }
+.similar-match-actions button:hover { background: var(--ws-well); color: var(--ink); }
+.similar-match-actions button[data-action="open"] { width: 29px; border-color: var(--line); color: var(--accent-ink); }
+.similar-match[data-feedback="similar"] .similar-rank { color: var(--similar-positive); }
+.similar-match[data-feedback="different"] .similar-rank { color: var(--accent); }
+.similar-match-actions button[data-action="similar"][aria-pressed="true"] { color: var(--similar-positive); background: #eaf0e4; border-color: #d3decb; }
+.similar-match-actions button[data-action="different"][aria-pressed="true"] { color: var(--accent-ink); background: #f4e7df; border-color: #e8cfc1; }
+.similar-method { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 9px; }
+.similar-method summary { list-style: none; width: fit-content; cursor: pointer; color: var(--muted); font: 9px var(--sans); }
+.similar-method summary::before { content: "+"; display: inline-block; width: 12px; font-family: var(--mono); }
+.similar-method[open] summary::before { content: "−"; }
+.similar-method p { color: var(--ink-soft); font: 10px/1.65 var(--sans); margin: 8px 0 0; }
+@keyframes similar-scan { from { left: 0; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  #similarityPanel *, #similarityPanel *::after, #similarityPanel *::before { animation: none !important; transition: none !important; }
+}
+.similar-processing { margin: 8px 0; color: var(--ink-soft); font: 8px/1.65 var(--mono); overflow-wrap: anywhere; }
+.similar-view-notice { margin: 10px 0; padding: 9px 10px; border-left: 2px solid var(--accent); background: var(--ws-well); color: var(--ink-soft); font: 10px/1.6 var(--sans); }
+.similar-review-tools { display: flex; gap: 12px; margin: 9px 0; }
+.similar-review-tools button { border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--accent-ink); padding: 5px 0; font-size: 10px; }
+.similar-review-guidance { font: 10px/1.65 var(--sans); color: var(--ink-soft); margin: 9px 0; }
+.similar-below { margin-top: 6px; font: 9px/1.5 var(--mono); color: var(--accent-ink); }
+.similar-votes { flex-wrap: wrap; }
+.similar-match-actions { align-items: flex-start; }
+.similar-match-actions button[data-action="open"] { flex-shrink: 0; min-width: 30px; }
+.similar-match-actions button[data-action="artifact"][aria-pressed="true"],
+.similar-match-actions button[data-action="uncertain"][aria-pressed="true"] { border-color: var(--line); background: var(--ws-well); color: var(--ink); }
+.similar-note { margin: 7px 0 3px; color: var(--ink-soft); font: 10px/1.6 var(--sans); }
+.similar-note summary { cursor: pointer; }
+.similar-note label { display: grid; gap: 5px; margin-top: 7px; font-size: 9px; }
+.similar-note textarea { box-sizing: border-box; width: 100%; resize: vertical; border: 1px solid var(--line); background: var(--paper); border-radius: 5px; padding: 8px; color: var(--ink); font: 11px/1.5 var(--sans); }
+.similar-note textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.similar-history { margin: 10px 0 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.similar-history small { color: var(--muted); font: 9px/1.5 var(--sans); letter-spacing: 0; text-transform: none; }

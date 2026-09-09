@@ -8,6 +8,7 @@ import { fetchParsed, fetchSample, streamIngest } from "./core/api.js";
 import { initNormalization } from "./ui/normalization.js";
 import { initAnalysisPanel } from "./ui/analysis-panel.js";
 import { initChannels } from "./ui/channels.js";
+import { initSimilarity } from "./ui/similarity.js";
 import { initControls } from "./ui/controls.js";
 import { initExports } from "./ui/exports.js";
 import { initSidebar } from "./ui/sidebar.js";
@@ -28,6 +29,7 @@ initAnalysisPanel(ctx);
 initChannels(ctx);
 initControls(ctx);
 initExports(ctx);
+initSimilarity(ctx);
 
 const sidebar = initSidebar({ onResize: () => viewer.resize() });
 ctx.setSidebarActive = (name) => sidebar.setActive(name);
@@ -71,10 +73,11 @@ viewer.onReadout = (info) => {
     `translate(${flipX ? "calc(-100% - 14px)" : "14px"}, ${flipY ? "calc(-100% - 14px)" : "14px"})`;
 };
 viewer.onSelectionChange = (a) => { ctx.renderSelected(a); ctx.renderAnalysis(a); ctx.drawElectrodeMap?.(); };
-viewer.onAnalysisChange = (a) => ctx.renderAnalysis(a);
+viewer.onAnalysisChange = (a) => { ctx.renderAnalysis(a); ctx.syncSimilarityProcessing?.(); };
 viewer.onEventsChange = (events) => ctx.renderEvents(events);
 viewer.onEventEditRequest = (id) => ctx.focusEventEditor(id);
 viewer.onChannelsChange = (s) => {
+  ctx.syncSimilarityProcessing?.();
   ctx.updateChannelSummary(s);
   ctx.syncExportDimensions?.();
 };
@@ -114,6 +117,7 @@ function setExportEnabled(enabled) {
 }
 
 function beginLoad(path, projectPath = "") {
+  ctx.resetSimilarity?.();
   loadController?.abort();
   // A project load owns its explorer sequence. Only loads originating outside
   // the explorer (sample, picker, drop) should cancel a pending project open.
@@ -134,6 +138,8 @@ function finishLoad(requestId) {
   if (requestId !== loadRequestId) return;
   $("loading").classList.remove("show");
   loadController = null;
+  // A failed replacement leaves the previous recording available for inspection.
+  if (appState.loadStatus === "error" && viewer.header) ctx.refreshSimilaritySource?.();
 }
 
 async function loadFile(file, {
@@ -224,6 +230,7 @@ function openFilePicker() {
 }
 
 function onLoaded(header, { preserveProcessing = false, montageFallback = false } = {}) {
+  ctx.refreshSimilaritySource?.();
   $("dropzone").classList.add("hidden");
   $("fileMeta").classList.remove("hidden");
   // The event ribbon shows itself only when events exist (viewer._syncEventTrack).
@@ -321,6 +328,7 @@ window.addEventListener("keydown", (e) => {
 // Host API: the agent operates the app only through these functions.
 const host = createSignalWorkspaceHost({
   viewer,
+  similarityWorkspace: ctx.similarityWorkspace,
   explorer,
   loadSample,
   ui: {

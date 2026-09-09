@@ -126,6 +126,13 @@ export async function runToolCall(host, call, signal, policy = {}) {
     if (name === "read_signal_workspace_guide") return ok(name, { markdown: await host.readGuide(signal) });
     if (name === "get_signal_workspace_state") return ok(name, host.signal.getState());
     if (name === "get_workspace_configuration") return ok(name, host.getWorkspaceConfiguration?.(host.getAgentConfiguration?.()) || {});
+    if (["capture_signal_reference", "search_similar_waveforms", "read_similarity_candidates"].includes(name)) {
+      if (!host.similarity) throw new Error("Shared similarity workspace is unavailable in this host.");
+      if (signal?.aborted) throw new DOMException("Stopped.", "AbortError");
+      if (name === "capture_signal_reference") return ok(name, host.similarity.capture(args));
+      if (name === "search_similar_waveforms") return ok(name, await host.similarity.search(args, signal));
+      return ok(name, host.similarity.read(args));
+    }
     if (name === "list_agent_skills") {
       const listed = await host.skills.list(signal);
       const enabled = enabledSkillSet(host);

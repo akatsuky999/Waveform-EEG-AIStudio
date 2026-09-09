@@ -145,6 +145,7 @@ export class WaveformViewer {
     this.onReadout = null;
     this.onView = null; // notified after view changes (for external UI)
     this.onSelectionChange = null;
+    this.onMeasureComplete = null;
     this.onAnalysisChange = null;
     this.onMarkersChange = null;
     this.onEventsChange = null;
@@ -1833,6 +1834,9 @@ export class WaveformViewer {
         return;
       }
       if (this.measureMode) {
+        // A reference selection belongs to the trace where the drag starts.
+        const channel = this._channelAtPoint(e.offsetX, e.offsetY);
+        if (channel !== null) this.selectChannel(channel);
         measuring = true;
         measureStart = this._screenToTime(e.offsetX);
         this.measureRange = [measureStart, measureStart];
@@ -1860,6 +1864,7 @@ export class WaveformViewer {
       if (measuring) {
         measuring = false;
         this._emitAnalysis();
+        this.onMeasureComplete?.();
       }
       if (dragging) {
         const moved = Math.hypot(lastX - downX, lastY - downY);

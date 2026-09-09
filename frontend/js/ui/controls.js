@@ -2,7 +2,8 @@
 // n-th differencing controls.
 
 import { $, formatGain, gainFromSlider } from "../core/util.js";
-import { filterGain } from "../viewer/dsp.js";
+import { drawFilterResponse } from "./filter-response.js";
+import { MONTAGE_PRESENTATION } from "./workspace-presentation.js";
 
 const DIFF_HINTS = [
   "Raw signal — each higher order plots the discrete derivative, emphasising progressively faster transients.",
@@ -42,6 +43,15 @@ export function initControls(ctx) {
     $("montageMode").value = mode;
     viewer.setMontageMode(mode);
     ctx.buildLegend(viewer.baseHeader || viewer.header);
+    renderMontageSummary();
+  }
+  function renderMontageSummary() {
+    const mode = viewer.montageMode || "raw";
+    const presentation = MONTAGE_PRESENTATION[mode] || MONTAGE_PRESENTATION.raw;
+    $("montageEquation").textContent = presentation.equation;
+    $("montageDescription").textContent = presentation.description;
+    $("montageKind").textContent = mode === "raw" ? "Original" : "Derived";
+    $("montageOutput").textContent = viewer.header ? String(viewer.nChannels) : "—";
   }
   $("montageMode").addEventListener("change", (e) => setMontage(e.target.value));
 
@@ -67,6 +77,10 @@ export function initControls(ctx) {
   $("filterLow").addEventListener("input", queueFilterUpdate);
   $("filterHigh").addEventListener("input", queueFilterUpdate);
   $("filterNotch").addEventListener("change", queueFilterUpdate);
+  $("filterNotchOptions").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-notch]");
+    if (button) setFilter({ notch: button.dataset.notch });
+  });
 
   // ---- clinical presets ----
   $("filterPresets").addEventListener("click", (e) => {
@@ -86,63 +100,49 @@ export function initControls(ctx) {
     return low === bl && high === bh;
   }
   function syncPresetActive() {
-    document.querySelectorAll("#filterPresets button").forEach((b) =>
-      b.classList.toggle("active", presetMatches(b)));
+    document.querySelectorAll("#filterPresets button").forEach((b) => {
+      const active = presetMatches(b);
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-pressed", String(active));
+    });
+    document.querySelectorAll("#filterNotchOptions button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.notch === $("filterNotch").value)));
   }
 
-  // ---- filter frequency-response curve ----
+  // ---- calibrated frequency-response display (presentation only) ----
   function renderFilterResponse() {
     const canvas = $("filterResponse");
     if (!canvas) return;
-    const fs = viewer.fs || 256;
-    const nyq = fs / 2;
-    const opts = currentFilterOpts();
-    const dpr = window.devicePixelRatio || 1;
-    const w = canvas.clientWidth || 248;
-    const h = canvas.clientHeight || 48;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    const g = canvas.getContext("2d");
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, h);
-    const cssVar = (v, f) => (getComputedStyle(document.documentElement).getPropertyValue(v).trim() || f);
-    const accent = cssVar("--accent", "#c75f3e");
-    const grid = cssVar("--line", "#e3dfd2");
-    const soft = cssVar("--ink-soft", "#6b6760");
-    const top = 4, bot = h - 11, span = bot - top;
-
-    // freq gridlines + ticks every ~quarter Nyquist
-    g.strokeStyle = grid; g.lineWidth = 1; g.font = '8px "JetBrains Mono", monospace'; g.fillStyle = soft;
-    g.textAlign = "center"; g.textBaseline = "top";
-    for (let i = 1; i <= 3; i++) {
-      const x = (i / 4) * w;
-      g.globalAlpha = 0.5; g.beginPath(); g.moveTo(x, top); g.lineTo(x, bot); g.stroke(); g.globalAlpha = 1;
-      g.fillText(`${Math.round((i / 4) * nyq)}`, x, bot + 1);
-    }
-    g.textAlign = "left"; g.fillText("Hz", 1, bot + 1);
-
-    const yAt = (px) => bot - filterGain((px / w) * nyq, fs, opts) * span;
-    // filled passband
-    g.beginPath(); g.moveTo(0, bot);
-    for (let px = 0; px <= w; px++) g.lineTo(px, yAt(px));
-    g.lineTo(w, bot); g.closePath();
-    g.fillStyle = "rgba(199,95,62,0.13)"; g.fill();
-    // response line
-    g.beginPath();
-    for (let px = 0; px <= w; px++) { const y = yAt(px); px === 0 ? g.moveTo(px, y) : g.lineTo(px, y); }
-    g.strokeStyle = accent; g.lineWidth = 1.6; g.lineJoin = "round"; g.stroke();
+    const model = drawFilterResponse(canvas, viewer.fs || 256, currentFilterOpts(), Boolean(viewer.header));
+    $("filterBandReadout").textContent = model.range;
+    $("filterBandUnit").textContent = model.unit;
+    $("filterState").textContent = model.active ? "Active" : "Bypass";
+    $("filterState").dataset.active = String(model.active);
+    $("filterModeLabel").textContent = model.mode;
+    $("filterNyquist").textContent = viewer.header ? `Nyquist ${Number(model.nyquist.toFixed(2))} Hz` : "Load a recording";
+    $("filterRangeNote").textContent = viewer.header ? model.note : "";
+    $("filterRangeNote").hidden = !viewer.header || !model.note;
   }
   ctx.renderFilterResponse = renderFilterResponse;
   ctx.repaintSliders = () => { paintRange($("gain")); paintRange($("row")); };
   renderFilterResponse();
+  syncPresetActive();
+  // Repaint at the actual sidebar width after resizing or expanding the panel.
+  new ResizeObserver((entries) => {
+    if (entries.some((entry) => entry.contentRect.width > 0)) renderFilterResponse();
+  }).observe($("filterResponse"));
 
   function setDiff(n) {
     viewer.setDiffOrder(n);
     syncDiff(n);
   }
   function syncDiff(n) {
-    document.querySelectorAll("#diffSeg button").forEach((b) => b.classList.toggle("active", +b.dataset.n === n));
+    document.querySelectorAll("#diffSeg button").forEach((b) => {
+      b.classList.toggle("active", +b.dataset.n === n);
+      b.setAttribute("aria-pressed", String(+b.dataset.n === n));
+    });
     $("diffHint").textContent = DIFF_HINTS[n] || "";
+    $("diffReadout").textContent = ["Original signal", "First difference", "Second difference", "Third difference", "Fourth difference"][n] || "";
   }
   document.querySelectorAll("#diffSeg button").forEach((b) =>
     b.addEventListener("click", () => setDiff(+b.dataset.n)));
@@ -159,6 +159,7 @@ export function initControls(ctx) {
     $("filterLow").value = Number(viewer.filterOpts.low) > 0 ? String(viewer.filterOpts.low) : "";
     $("filterHigh").value = Number(viewer.filterOpts.high) > 0 ? String(viewer.filterOpts.high) : "";
     $("filterNotch").value = viewer.filterOpts.notch || "off";
+    renderMontageSummary();
     syncDiff(viewer.diffOrder);
     syncPresetActive();
     ctx.repaintSliders();

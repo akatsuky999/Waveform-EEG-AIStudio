@@ -1,0 +1,50 @@
+/* Filter: a calibrated instrument, in the workspace's paper-and-clay palette. */
+#filterPanel .ws-body-inner { padding: 10px 13px 13px; }
+#rail #filterPanel .filter-presets { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 0; padding: 0; margin: 0 0 15px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; overflow: visible; }
+#rail #filterPanel .filter-presets button { position: relative; min-width: 0; height: 32px; padding: 0 2px; border: 0; border-radius: 0; font: 500 11px var(--sans); color: var(--ink-soft); background: transparent; box-shadow: none; transition: color .16s, background .16s; }
+#rail #filterPanel .filter-presets button::after { content: ""; position: absolute; bottom: -1px; left: 9px; right: 9px; height: 2px; border-radius: 2px; background: transparent; transition: background .16s; }
+#rail #filterPanel .filter-presets button.active { color: var(--accent-ink); background: rgba(199,95,62,.045); }
+#rail #filterPanel .filter-presets button.active::after { background: var(--accent); }
+#rail #filterPanel .filter-presets button[data-notch="off"].active { color: var(--ink); background: rgba(29,27,22,.025); }
+#rail #filterPanel .filter-presets button[data-notch="off"].active::after { background: var(--ink-soft); }
+#rail #filterPanel .filter-presets button:hover:not(:disabled) { color: var(--ink); background: var(--ws-well); }
+#filterPanel button:disabled { opacity: .4; cursor: default; }
+#filterPanel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; z-index: 1; }
+
+.filter-instrument { margin: 0 0 15px; }
+.filter-instrument-head, .filter-instrument-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.filter-instrument-head { color: var(--ink-soft); font: 8px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+.filter-state { display: inline-flex; align-items: center; gap: 5px; font-size: 8px; letter-spacing: .02em; }
+.filter-state::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.filter-state[data-active="true"] { color: var(--accent-ink); }
+.filter-state[data-active="true"]::before { background: var(--accent); box-shadow: 0 0 0 2px rgba(199,95,62,.1); }
+.filter-band { display: flex; align-items: baseline; gap: 6px; margin-top: 8px; min-height: 26px; }
+#filterBandReadout { font: 400 22px/1.2 var(--serif); color: var(--ink); font-variant-numeric: lining-nums tabular-nums; letter-spacing: -.025em; }
+#filterBandUnit { font: 10px var(--mono); color: var(--ink-soft); }
+#rail #filterPanel .filter-response { display: block; width: 100%; height: 108px; margin: 6px 0 0; border: 0; background: transparent; }
+.filter-instrument-foot { margin-top: 4px; font: 8px/1.5 var(--mono); color: var(--ink-soft); }
+.filter-instrument-foot > span:last-child { text-align: right; }
+.filter-cutoffs { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); border: 1px solid var(--ws-well-line); border-radius: 8px; background: var(--ws-well); overflow: hidden; }
+.filter-cutoff { display: grid; gap: 8px; padding: 10px 11px 8px; min-width: 0; cursor: text; transition: background .16s; }
+.filter-cutoff + .filter-cutoff { border-left: 1px solid var(--ws-well-line); }
+.filter-cutoff:focus-within { background: var(--paper); box-shadow: inset 0 -2px 0 var(--accent); }
+.filter-cutoff-label { display: flex; align-items: center; gap: 6px; white-space: nowrap; font: 10px var(--sans); color: var(--ink-soft); }
+.filter-cutoff-label svg { width: 15px; height: 13px; flex: 0 0 auto; fill: none; stroke: var(--accent); stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+.filter-cutoff-value { display: flex; align-items: baseline; gap: 3px; min-width: 0; }
+#rail #filterPanel .filter-cutoff input { width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); font: 400 19px/1.25 var(--mono); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
+#filterPanel .filter-cutoff input::placeholder { opacity: 1; color: var(--ink-soft); }
+#filterPanel .filter-cutoff input:focus { outline: none; }
+#filterPanel .filter-cutoff input::-webkit-inner-spin-button, #filterPanel .filter-cutoff input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.filter-cutoff-value > span { font: 9px var(--mono); color: var(--ink-soft); }
+.filter-notch-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.filter-notch-label { font: 11px var(--sans); color: var(--ink); }
+.filter-notch-label small { display: block; margin-top: 4px; font-size: 9px; color: var(--ink-soft); }
+.filter-notch-options { display: flex; gap: 2px; padding: 3px; background: var(--ws-well); border-radius: 6px; }
+.filter-notch-options button { min-width: 32px; min-height: 28px; padding: 4px 6px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-soft); font: 10px var(--mono); cursor: pointer; transition: background .16s, color .16s, box-shadow .16s; }
+.filter-notch-options button > span { font-size: 8px; }
+.filter-notch-options button:hover:not(:disabled) { color: var(--accent-ink); }
+.filter-notch-options button[aria-pressed="true"] { background: var(--paper); color: var(--accent-ink); box-shadow: 0 1px 3px rgba(29,27,22,.06); }
+.filter-notch-options button[data-notch="off"][aria-pressed="true"] { color: var(--ink); }
+.filter-range-note { border-top: 1px solid var(--line); padding-top: 9px; margin: 12px 0 0; font: 10px/1.5 var(--sans); color: var(--warn-ink); }
+.filter-range-note[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { #filterPanel *, #filterPanel *::after { transition: none !important; } }

@@ -1,0 +1,28 @@
+/* A coverage atlas: spatial scalp sites, ordered contact architecture otherwise. */
+#rail .ws-electrode-atlas { margin: -2px 0 18px; }
+#rail .em-atlas-head { padding: 4px 0 12px; }
+#rail .em-atlas-head b { display: block; font: 400 18px var(--serif); letter-spacing: -.025em; }
+#rail .em-atlas-head span { display: block; margin-top: 5px; color: var(--ink-soft); font: 8px/1.6 var(--mono); }
+#rail .em-shank-card { padding: 12px 0; border-top: 1px solid var(--line); }
+#rail .em-shank-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+#rail .em-shank-head b { font: 500 14px var(--serif); color: var(--ink); }
+#rail .em-shank-head span { font: 8px var(--mono); color: var(--ink-soft); }
+#rail .em-contact-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+#rail .em-contact-key { min-width: 0; min-height: 26px; padding: 2px; border: 1px solid color-mix(in srgb,var(--accent) 22%,var(--line)); border-radius: 5px; background: rgba(199,95,62,var(--contact-level,.08)); font: 9px var(--mono); color: var(--accent-ink); cursor: pointer; transition: background .15s, box-shadow .15s; }
+#rail .em-contact-key:hover { background: var(--ws-well); box-shadow: 0 0 0 1px var(--accent); }
+#rail .em-contact-key[aria-pressed="true"] { background: var(--accent); color: var(--paper); border-color: var(--accent); box-shadow: 0 0 0 2px var(--ws-card),0 0 0 3px var(--accent); }
+#rail .em-contact-key.is-hidden { opacity: .4; border-style: dashed; }
+#rail .em-unplaced-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+#rail .em-unplaced-grid button { padding-inline: 8px; overflow-wrap: anywhere; }
+#rail .em-caption { margin: 12px 0 0; font: 9px/1.65 var(--sans); color: var(--ink-soft); text-align: left; }
+#rail .em-scalp { background: radial-gradient(ellipse at 50% 48%, #f0eadd88, transparent 65%); }
+#rail .em-scalp .em-site { font-size: 7px; paint-order: stroke; stroke: var(--ws-card); stroke-width: 2px; }
+#rail .em-scalp .em-fiducial { font-size: 7px; letter-spacing: .08em; }
+#rail .em-scalp .em-contact:focus-visible { outline: none; stroke: var(--accent); stroke-width: 2px; }
+#rail .em-scalp .em-link { stroke-width: 4px; }
+#rail .em-scalp .is-hidden { opacity: .3; }
+#rail .em-region-key { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px 12px; padding: 10px 0 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font: 9px var(--sans); }
+#rail .em-region-key span { display: flex; align-items: baseline; gap: 6px; }
+#rail .em-region-key b { width: 17px; color: var(--accent-ink); font: 10px var(--mono); }
+@container (max-width: 280px) { #rail .em-contact-grid { grid-template-columns: repeat(6,minmax(0,1fr)); } }
+@media (prefers-reduced-motion: reduce) { #rail .em-contact-key { transition: none; } }

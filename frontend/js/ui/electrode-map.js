@@ -1,14 +1,6 @@
-// electrode-map.js — the recording drawn as electrodes, not as a list.
-//
-// An alphabetical channel list is a software idea. EEG is read spatially: a
-// depth study is a set of SHANKS whose contacts run deep→lateral, and a scalp
-// study is the 10-20 layout on a head. Labels already encode this — `PoC2'7` is
-// contact 7 of shank PoC2', `F7` is a left temporal scalp position — so the map
-// is derived from the data, not configured.
-//
-// Contacts carry live amplitude, which makes this a topographic readout rather
-// than a diagram: where the signal is hot is visible before any channel is
-// opened. Click a contact to select it.
+// electrode-map.js — standard scalp coverage and label-derived contact atlas.
+// Labels establish schematic sites or ordered groups, NOT patient anatomy,
+// physical spacing or intracranial depth direction. Unknown channels stay visible.
 
 const clean = (label) => String(label || "").trim();
 
@@ -101,6 +93,8 @@ function normalizeScalpName(label) {
 }
 
 function scalpSite(label) {
+  // A'1 is a depth-contact name, not the scalp/mastoid site A1.
+  if (/['’′]/.test(label) || /^\s*(ecog|seeg|ieeg)[\s._-]+/i.test(label)) return null;
   const key = normalizeScalpName(label);
   if (!key || NON_EEG.test(key)) return null;
   if (SCALP_POSITIONS[key]) return { x: SCALP_POSITIONS[key][0], y: SCALP_POSITIONS[key][1], tier: "standard" };
@@ -114,15 +108,16 @@ function scalpSite(label) {
  * @returns {{kind: "scalp"|"depth"|"none", shanks: Array, scalp: Array, unplaced: Array}}
  */
 export function parseElectrodes(channelMeta = []) {
-  const items = channelMeta.map((meta, index) => ({ index, label: clean(meta?.label) }));
+  const items = channelMeta.map((meta, index) => ({ index, label: clean(meta?.label),
+    siteLabel: clean(meta?.label).replace(/-(CAR|GAR|LAP)$/i, "") }));
 
   const scalp = [];
   const chains = [];        // bipolar derivations drawn across the scalp
   const rest = [];
   for (const item of items) {
-    const site = scalpSite(item.label);
+    const site = scalpSite(item.siteLabel);
     if (site) { scalp.push({ ...item, ...site }); continue; }
-    const pair = splitDerivation(item.label);
+    const pair = splitDerivation(item.siteLabel);
     const from = pair && scalpSite(pair.a);
     const to = pair && scalpSite(pair.b);
     if (from && to) chains.push({ ...item, from: [from.x, from.y], to: [to.x, to.y] });
@@ -135,7 +130,7 @@ export function parseElectrodes(channelMeta = []) {
   const byStem = new Map();
   const unplaced = [];
   for (const item of rest) {
-    const pair = splitDerivation(item.label);
+    const pair = splitDerivation(item.siteLabel);
     const a = pair && splitContact(pair.a);
     const b = pair && splitContact(pair.b);
     if (a && b && a.stem === b.stem) {
@@ -143,14 +138,14 @@ export function parseElectrodes(channelMeta = []) {
       byStem.get(a.stem).push({ ...item, n: Math.min(a.n, b.n), span: Math.abs(b.n - a.n) || 1 });
       continue;
     }
-    const parsed = splitContact(item.label);
+    const parsed = splitContact(item.siteLabel);
     if (!parsed || NON_EEG.test(parsed.stem.replace(/[^a-z0-9]/gi, ""))) { unplaced.push(item); continue; }
     if (!byStem.has(parsed.stem)) byStem.set(parsed.stem, []);
     byStem.get(parsed.stem).push({ ...item, n: parsed.n, span: 0 });
   }
   const shanks = [];
   for (const [stem, contacts] of byStem) {
-    // Two numbered channels are a coincidence; three are an electrode.
+    // Three numbered labels suffice for a group display, not anatomical inference.
     if (contacts.length < 3) { unplaced.push(...contacts); continue; }
     contacts.sort((a, b) => a.n - b.n);
     shanks.push({ stem, contacts });
@@ -158,6 +153,7 @@ export function parseElectrodes(channelMeta = []) {
   shanks.sort((a, b) => b.contacts.length - a.contacts.length || a.stem.localeCompare(b.stem));
 
   const hasScalp = scalp.length + chains.length >= 3;
+  if (!hasScalp) unplaced.push(...scalp, ...chains);
   const hasDepth = shanks.length > 0;
   const kind = hasScalp && hasDepth ? "mixed" : hasScalp ? "scalp" : hasDepth ? "depth" : "none";
   return { kind, scalp: hasScalp ? scalp : [], chains: hasScalp ? chains : [], shanks, unplaced };
@@ -185,7 +181,7 @@ const el = (name, attrs = {}) => {
 
 function contactTitle(item, state) {
   const value = state.values[item.index];
-  return `${item.label}${Number.isFinite(value) && value > 0 ? ` · ${value.toFixed(1)} µV rms` : ""}`;
+  return `${item.label}${Number.isFinite(value) && value > 0 ? ` · ${value.toFixed(1)} source SD` : ""}`;
 }
 
 function contactNode({ x, y, r, item, level, state, onSelect }) {
@@ -193,6 +189,8 @@ function contactNode({ x, y, r, item, level, state, onSelect }) {
   group.dataset.index = String(item.index);
   if (state.selected === item.index) group.classList.add("is-selected");
   if (state.hidden.has(item.index)) group.classList.add("is-hidden");
+  group.setAttribute("aria-label", contactTitle(item, state));
+  group.setAttribute("aria-pressed", String(state.selected === item.index));
 
   group.appendChild(el("circle", { cx: x, cy: y, r, class: "em-fill", "fill-opacity": (0.12 + level * 0.82).toFixed(3) }));
   group.appendChild(el("circle", { cx: x, cy: y, r, class: "em-ring" }));
@@ -208,62 +206,6 @@ function contactNode({ x, y, r, item, level, state, onSelect }) {
   return group;
 }
 
-/** A bipolar derivation along a shank: the segment between the two contacts. */
-function derivationNode({ x, y, step, item, r, level, state, onSelect }) {
-  const group = el("g", { class: "em-contact is-derivation", tabindex: "0", role: "button" });
-  group.dataset.index = String(item.index);
-  if (state.selected === item.index) group.classList.add("is-selected");
-  if (state.hidden.has(item.index)) group.classList.add("is-hidden");
-  const length = Math.max(step * item.span, r * 2);
-  group.appendChild(el("rect", {
-    x, y: y - r, width: length, height: r * 2, rx: r,
-    class: "em-fill", "fill-opacity": (0.12 + level * 0.82).toFixed(3),
-  }));
-  group.appendChild(el("rect", { x, y: y - r, width: length, height: r * 2, rx: r, class: "em-ring" }));
-  const title = el("title");
-  title.textContent = contactTitle(item, state);
-  group.appendChild(title);
-  const activate = () => onSelect?.(item.index);
-  group.addEventListener("click", activate);
-  group.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); }
-  });
-  return group;
-}
-
-function renderDepth(svg, layout, state, onSelect, width) {
-  const labelW = 46;
-  const rowH = 21;
-  const pad = 4;
-  const maxContacts = Math.max(...layout.shanks.map((s) => s.contacts.length));
-  const track = width - labelW - pad * 2;
-  const step = Math.min(15, track / Math.max(1, maxContacts));
-  const r = Math.max(3, Math.min(5.5, step / 2 - 1.6));
-  const height = layout.shanks.length * rowH + pad * 2;
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("height", height);
-
-  layout.shanks.forEach((shank, row) => {
-    const y = pad + row * rowH + rowH / 2;
-    const name = el("text", { x: labelW - 8, y: y + 3.4, class: "em-label", "text-anchor": "end" });
-    name.textContent = shank.stem.replace(/['’]$/, "′");
-    svg.appendChild(name);
-    // the shank body: contacts sit on it, deep (1) at the left
-    svg.appendChild(el("line", {
-      x1: labelW, y1: y, class: "em-shaft",
-      x2: labelW + Math.max(...shank.contacts.map((c) => c.n - shank.contacts[0].n + (c.span || 0))) * step + 0.01, y2: y,
-    }));
-    // Position by contact NUMBER, not by list order, so a bipolar chain still
-    // lands on the physical geometry it derives from.
-    const base = shank.contacts[0].n;
-    shank.contacts.forEach((item) => {
-      const x = labelW + (item.n - base) * step;
-      svg.appendChild(item.span
-        ? derivationNode({ x, y, step, item, r, level: state.scale(state.values[item.index]), state, onSelect })
-        : contactNode({ x, y, r, item, level: state.scale(state.values[item.index]), state, onSelect }));
-    });
-  });
-}
 
 function renderScalp(svg, layout, state, onSelect, width, offsetY = 0) {
   // The head is drawn the way an EEG report draws it: nasion up, inion down,
@@ -274,8 +216,8 @@ function renderScalp(svg, layout, state, onSelect, width, offsetY = 0) {
   const cx = width / 2;
   const R = (box / 2) * 0.72;
   const cy = offsetY + box / 2;
-  const labelled = box >= 210;                   // below this, labels stop fitting
-  const r = labelled ? Math.max(9, R * 0.115) : Math.max(4.5, R * 0.075);
+  const labelled = layout.scalp.length <= 40;
+  const r = labelled ? Math.max(6, R * 0.08) : Math.max(3, R * 0.045);
 
   const head = el("g", { class: "em-head-group" });
   head.appendChild(el("circle", { cx, cy, r: R, class: "em-head" }));
@@ -298,11 +240,16 @@ function renderScalp(svg, layout, state, onSelect, width, offsetY = 0) {
   };
   mark("NASION", cx, cy - R - R * 0.24);
   mark("INION", cx, cy + R + R * 0.30);
+  mark("L", cx - R * 1.27, cy);
+  mark("R", cx + R * 1.27, cy);
 
   for (const link of layout.chains || []) {
     const group = el("g", { class: "em-contact is-chain", tabindex: "0", role: "button" });
     group.dataset.index = String(link.index);
     if (state.selected === link.index) group.classList.add("is-selected");
+    if (state.hidden.has(link.index)) group.classList.add("is-hidden");
+    group.setAttribute("aria-label", contactTitle(link, state));
+    group.setAttribute("aria-pressed", String(state.selected === link.index));
     const level = state.scale(state.values[link.index]);
     group.appendChild(el("line", {
       x1: cx + link.from[0] * R, y1: cy + link.from[1] * R,
@@ -313,6 +260,9 @@ function renderScalp(svg, layout, state, onSelect, width, offsetY = 0) {
     title.textContent = contactTitle(link, state);
     group.appendChild(title);
     group.addEventListener("click", () => onSelect?.(link.index));
+    group.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect?.(link.index); }
+    });
     svg.appendChild(group);
   }
 
@@ -324,7 +274,7 @@ function renderScalp(svg, layout, state, onSelect, width, offsetY = 0) {
     node.classList.add(`tier-${item.tier}`);
     if (labelled) {
       const text = el("text", { x: cx + item.x * R, y: cy + item.y * R + 2.6, class: "em-site", "text-anchor": "middle" });
-      text.textContent = item.label.replace(/^\s*eeg[\s._-]+/i, "").split(/[-–]/)[0].slice(0, 4);
+      text.textContent = item.siteLabel.replace(/^\s*eeg[\s._-]+/i, "").split(/[-–]/)[0].slice(0, 4);
       node.appendChild(text);
     }
     svg.appendChild(node);
@@ -343,10 +293,6 @@ export function renderElectrodeMap(container, {
   if (!container) return null;
   container.innerHTML = "";
   const layout = parseElectrodes(channelMeta);
-  if (layout.kind === "none") {
-    container.classList.add("hidden");
-    return layout;
-  }
   container.classList.remove("hidden");
 
   const width = Math.max(180, container.clientWidth || 240);
@@ -356,34 +302,67 @@ export function renderElectrodeMap(container, {
   };
   const parts = [];
 
+  const heading = (title, note) => {
+    const head = document.createElement("div"); head.className = "em-atlas-head";
+    const strong = document.createElement("b"); strong.textContent = title;
+    const small = document.createElement("span"); small.textContent = note;
+    head.append(strong, small); container.appendChild(head);
+  };
+  const contacts = (items, numbered = false) => {
+    const grid = document.createElement("div"); grid.className = numbered ? "em-contact-grid" : "em-unplaced-grid";
+    for (const item of items) {
+      const button = document.createElement("button"); button.type = "button";
+      button.className = "em-contact-key";
+      button.textContent = numbered ? (item.span ? `${item.n}–${item.n + item.span}` : String(item.n)) : item.label;
+      button.title = contactTitle(item, state);
+      button.setAttribute("aria-label", contactTitle(item, state));
+      button.setAttribute("aria-pressed", String(selected === item.index));
+      button.classList.toggle("is-hidden", hidden.has(item.index));
+      button.style.setProperty("--contact-level", String(.05 + .2 * state.scale(values[item.index])));
+      button.addEventListener("click", () => onSelect?.(item.index)); grid.appendChild(button);
+    }
+    return grid;
+  };
+
   if (layout.scalp.length || layout.chains.length) {
+    heading("Scalp coverage", "10–20 / 10–10 · standard schematic");
     const svg = el("svg", { class: "electrode-map em-scalp", width: "100%", xmlns: SVG_NS,
       role: "img", "aria-label": "Scalp electrode map" });
     const box = renderScalp(svg, layout, state, onSelect, width, 6);
     svg.setAttribute("viewBox", `0 0 ${width} ${box + 12}`);
     svg.setAttribute("height", box + 12);
     container.appendChild(svg);
+    const regions = document.createElement("div"); regions.className = "em-region-key";
+    regions.setAttribute("aria-label", "Scalp region nomenclature, not cortical localization");
+    for (const [code, name] of [["Fp","Frontopolar"],["F","Frontal"],["C","Central"],["T","Temporal"],["P","Parietal"],["O","Occipital"]]) {
+      const item = document.createElement("span");
+      const key = document.createElement("b"); key.textContent = code;
+      item.append(key, document.createTextNode(name)); regions.appendChild(item);
+    }
+    container.appendChild(regions);
     parts.push(`${layout.scalp.length || layout.chains.length} scalp ${layout.chains.length ? "derivations" : "electrodes"}`);
   }
 
   if (layout.shanks.length) {
-    if (parts.length) {
-      const rule = document.createElement("div");
-      rule.className = "em-split";
-      rule.innerHTML = "<span>Intracranial</span>";
-      container.appendChild(rule);
+    heading("Contact architecture", "Label groups · not anatomical coordinates");
+    for (const shank of layout.shanks) {
+      const card = document.createElement("section"); card.className = "em-shank-card";
+      const head = document.createElement("div"); head.className = "em-shank-head";
+      const name = document.createElement("b"); name.textContent = shank.stem.replace(/['’]$/, "′");
+      const count = document.createElement("span"); count.textContent = `${shank.contacts.length} channels`;
+      head.append(name, count); card.append(head, contacts(shank.contacts, true)); container.appendChild(card);
     }
-    const svg = el("svg", { class: "electrode-map em-depth", width: "100%", xmlns: SVG_NS,
-      role: "img", "aria-label": "Depth electrode map" });
-    renderDepth(svg, layout, state, onSelect, width);
-    container.appendChild(svg);
-    const contacts = layout.shanks.reduce((n, shank) => n + shank.contacts.length, 0);
-    parts.push(`${layout.shanks.length} electrodes · ${contacts} contacts`);
+    parts.push(`${layout.shanks.length} label groups`);
+  }
+
+  if (layout.unplaced.length) {
+    heading("Other channels", "Location not established");
+    container.appendChild(contacts(layout.unplaced));
   }
 
   const caption = document.createElement("p");
   caption.className = "em-caption";
-  caption.textContent = parts.join(" · ");
+  caption.textContent = channelMeta.length ? `${parts.join(" · ")}${parts.length ? ". " : ""}Select a contact to focus. Shading: relative source SD. No patient-specific localization inferred.` : "Load a recording to see its electrode coverage.";
   container.appendChild(caption);
   return layout;
 }

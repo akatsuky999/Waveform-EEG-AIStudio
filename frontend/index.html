@@ -15,6 +15,10 @@
   <link rel="stylesheet" href="css/stage.css" />
   <link rel="stylesheet" href="css/sidebar.css" />
   <link rel="stylesheet" href="css/workstation.css" />
+  <link rel="stylesheet" href="css/filter.css" />
+  <link rel="stylesheet" href="css/similarity.css" />
+  <link rel="stylesheet" href="css/signal-workspace.css" />
+  <link rel="stylesheet" href="css/electrode-atlas.css" />
   <link rel="stylesheet" href="/agent/agent.css" />
   <link rel="stylesheet" href="/agent/agent-settings.css" />
   <script type="importmap">
@@ -101,8 +105,8 @@
             <header class="sidebar-view-head controls-head">
               <div><span class="sidebar-eyebrow">Controls</span><strong>Signal workspace</strong></div>
               <div class="sidebar-head-actions">
-                <button type="button" id="resetBtn" title="Reset view (0)">Reset</button>
-                <button type="button" id="analysisBtn" title="Toggle analysis">Analysis</button>
+                <button type="button" id="resetBtn" title="Reset view (0)" aria-label="Reset view"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7a6 6 0 1 1 0 6M4 3v4h4"/></svg></button>
+                <button type="button" id="analysisBtn" title="Toggle analysis" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15h14M4 12l3-5 3 6 3-10 3 7"/></svg>Analysis</button>
               </div>
             </header>
             <div class="controls-empty" id="controlsEmpty">Load an EEG file to enable signal controls.</div>
@@ -112,35 +116,47 @@
                   <span class="chain-eyebrow">Signal chain</span>
                   <p class="chain-recipe" id="chainRecipe"></p>
                 </div>
-<section class="ws-section" data-ws-section="filters">
+<section class="ws-section" data-ws-section="filters" id="filterPanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="stage-node" aria-hidden="true"></span><span class="stage-no" aria-hidden="true">01</span><span class="ws-title stage-name">Filter</span>
                   <span class="stage-sub" aria-hidden="true">band + notch</span><span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
-                  <div class="filter-presets" id="filterPresets">
-                    <button data-low="1" data-high="70" title="Review · 1–70 Hz">Review</button>
-                    <button data-low="1" data-high="40" title="Seizure · 1–40 Hz">Seizure</button>
-                    <button data-low="0.3" data-high="35" title="Sleep · 0.3–35 Hz">Sleep</button>
-                    <button data-low="80" data-high="250" title="HFO · 80–250 Hz">HFO</button>
-                    <button data-low="0" data-high="0" data-notch="off" title="No band filter">Off</button>
+                  <div class="filter-presets" id="filterPresets" role="group" aria-label="Filter presets">
+                    <button type="button" data-low="1" data-high="70" title="Review · 1–70 Hz" aria-pressed="false">Review</button>
+                    <button type="button" data-low="1" data-high="40" title="Seizure · 1–40 Hz" aria-pressed="false">Seizure</button>
+                    <button type="button" data-low="0.3" data-high="35" title="Sleep · 0.3–35 Hz" aria-pressed="false">Sleep</button>
+                    <button type="button" data-low="80" data-high="250" title="HFO · 80–250 Hz" aria-pressed="false">HFO</button>
+                    <button type="button" data-low="0" data-high="0" data-notch="off" title="Bypass band and notch filters" aria-pressed="true">Off</button>
                   </div>
-                  <canvas class="filter-response" id="filterResponse" title="Filter frequency response"></canvas>
-                  <div class="grid-2">
-                    <label class="mini-field">Low cut <input type="number" id="filterLow" min="0" max="120" step="0.5" placeholder="0" /></label>
-                    <label class="mini-field">High cut <input type="number" id="filterHigh" min="0" max="128" step="0.5" placeholder="off" /></label>
+                  <figure class="filter-instrument" aria-labelledby="filterResponseLabel">
+                    <figcaption class="filter-instrument-head"><span id="filterResponseLabel">Frequency response</span><span id="filterState" class="filter-state">Bypass</span></figcaption>
+                    <div class="filter-band"><span id="filterBandReadout">Full spectrum</span><span id="filterBandUnit"></span></div>
+                    <canvas class="filter-response" id="filterResponse" role="img" aria-label="Filter frequency response"></canvas>
+                    <div class="filter-instrument-foot"><span id="filterModeLabel">Unfiltered</span><span id="filterNyquist">Nyquist —</span></div>
+                  </figure>
+                  <div class="filter-cutoffs">
+                    <label class="filter-cutoff" for="filterLow"><span class="filter-cutoff-label"><svg viewBox="0 0 20 16" aria-hidden="true"><path d="M2 13h4l5-10h7"/></svg>Low cut</span><span class="filter-cutoff-value"><input type="number" id="filterLow" min="0" max="120" step="0.5" placeholder="0" /><span>Hz</span></span></label>
+                    <label class="filter-cutoff" for="filterHigh"><span class="filter-cutoff-label"><svg viewBox="0 0 20 16" aria-hidden="true"><path d="M2 3h7l5 10h4"/></svg>High cut</span><span class="filter-cutoff-value"><input type="number" id="filterHigh" min="0" max="128" step="0.5" placeholder="Off" /><span>Hz</span></span></label>
                   </div>
-                  <div class="mini-field full">Notch
-                    <select id="filterNotch">
+                  <div class="filter-notch-row">
+                    <div class="filter-notch-label">Notch<small>Power-line noise</small></div>
+                    <select id="filterNotch" data-no-enhance hidden aria-hidden="true" tabindex="-1">
                       <option value="off">Off</option>
                       <option value="50">50 Hz</option>
                       <option value="60">60 Hz</option>
                     </select>
+                    <div class="filter-notch-options" id="filterNotchOptions" role="group" aria-label="Power-line notch">
+                      <button type="button" data-notch="off" aria-pressed="true">Off</button>
+                      <button type="button" data-notch="50" aria-pressed="false">50<span> Hz</span></button>
+                      <button type="button" data-notch="60" aria-pressed="false">60<span> Hz</span></button>
+                    </div>
                   </div>
+                  <p class="filter-range-note" id="filterRangeNote" role="status" hidden></p>
                 </div></div>
               </section>
-              <section class="ws-section" data-ws-section="montage">
+              <section class="ws-section" data-ws-section="montage" id="montagePanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="stage-node" aria-hidden="true"></span>
                   <span class="stage-no" aria-hidden="true">02</span>
@@ -150,7 +166,7 @@
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
-                  <label class="mini-field full">Montage
+                  <label class="ws-field">Reference method
                     <select id="montageMode">
                       <option value="raw">Original channels</option>
                       <option value="bipolar">Bipolar sequential</option>
@@ -159,16 +175,22 @@
                       <option value="local">Local neighbor reference</option>
                     </select>
                   </label>
+                  <div class="ws-specimen montage-rule">
+                    <div class="ws-specimen-head"><span>Reference rule</span><span id="montageKind">Original</span></div>
+                    <div class="ws-equation" id="montageEquation">yᵢ = xᵢ</div>
+                    <p id="montageDescription" class="ws-caption">Keep the original channel reference.</p>
+                  </div>
+                  <div class="ws-footnote"><span>Output channels</span><span id="montageOutput">—</span></div>
                 </div></div>
               </section>
-<section class="ws-section" data-ws-section="transform" data-ws-default="collapsed">
+<section class="ws-section" data-ws-section="transform" data-ws-default="collapsed" id="transformPanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="stage-node" aria-hidden="true"></span><span class="stage-no" aria-hidden="true">03</span><span class="ws-title stage-name">Transform</span>
                   <span class="stage-sub" aria-hidden="true">difference + scale</span><span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
-                  <div class="ws-sub-label">Normalization</div>
+                  <div class="ws-field-label">Amplitude scaling</div>
                   <div class="dropdown" id="normDropdown">
                     <button class="dd-trigger" id="normTrigger" aria-haspopup="listbox" aria-expanded="false">
                       <span id="normCurrent">Raw</span>
@@ -183,23 +205,24 @@
                       <button class="dd-item" data-m="l2" role="option">Unit norm</button>
                     </div>
                   </div>
-                  <div class="formula-card" id="formulaCard"></div>
+                  <div class="ws-specimen scaling-rule"><div class="ws-specimen-head"><span>Scaling rule</span><span id="normUnitLabel">µV</span></div><div class="formula-card" id="formulaCard"></div></div>
                   <div class="norm-params" id="normParams"></div>
                   <p class="hint" id="normHint"></p>
                   <div class="ws-sub">
-                    <div class="ws-sub-label">Differencing</div>
-                    <div class="segmented" id="diffSeg">
-                      <button data-n="0" class="active">f(t)</button>
-                      <button data-n="1">Δ¹</button>
-                      <button data-n="2">Δ²</button>
-                      <button data-n="3">Δ³</button>
-                      <button data-n="4">Δ⁴</button>
+                    <div class="ws-field-label">Difference order</div>
+                    <div class="segmented" id="diffSeg" role="group" aria-label="Difference order">
+                      <button type="button" data-n="0" class="active" aria-label="No differencing" aria-pressed="true">f(t)</button>
+                      <button type="button" data-n="1" aria-label="First difference" aria-pressed="false">Δ¹</button>
+                      <button type="button" data-n="2" aria-label="Second difference" aria-pressed="false">Δ²</button>
+                      <button type="button" data-n="3" aria-label="Third difference" aria-pressed="false">Δ³</button>
+                      <button type="button" data-n="4" aria-label="Fourth difference" aria-pressed="false">Δ⁴</button>
                     </div>
+                    <div class="ws-footnote"><span>Transformation</span><span id="diffReadout">Original signal</span></div>
                     <p class="hint" id="diffHint"></p>
                   </div>
                 </div></div>
               </section>
-<section class="ws-section" data-ws-section="display" data-stage-terminal>
+<section class="ws-section" data-ws-section="display" data-stage-terminal id="viewPanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="stage-node" aria-hidden="true"></span><span class="stage-no" aria-hidden="true">04</span><span class="ws-title stage-name">View</span>
                   <span class="stage-sub" aria-hidden="true">gain + rows</span><span class="ws-meta" data-ws-meta></span>
@@ -207,13 +230,16 @@
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
                   <div class="ctrl">
-                    <div class="row"><label>Amplitude gain</label><span class="val" id="gainVal">1.0×</span></div>
+                    <div class="row"><label for="gain">Amplitude gain</label><span class="val" id="gainVal">1.0×</span></div>
                     <input type="range" id="gain" min="-2" max="3" step="0.01" value="0" />
+                    <div class="ws-scale" aria-hidden="true"><span>0.01×</span><span>1×</span><span>1,000×</span></div>
                   </div>
                   <div class="ctrl">
-                    <div class="row"><label>Row height</label><span class="val" id="rowVal">46 px</span></div>
+                    <div class="row"><label for="row">Row height</label><span class="val" id="rowVal">46 px</span></div>
                     <input type="range" id="row" min="20" max="130" step="1" value="46" />
+                    <div class="ws-scale" aria-hidden="true"><span>20 px</span><span>130 px</span></div>
                   </div>
+                  <p class="ws-caption">Display only · source samples are unchanged.</p>
                 </div></div>
               </section>
               </div>
@@ -223,16 +249,16 @@
 
 
               <div class="zone-rule"><span>Workspace</span></div>
-              <section class="ws-section" data-ws-section="channels">
+              <section class="ws-section" data-ws-section="channels" id="channelsPanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Channels</span>
                   <span class="ws-meta" id="chCount"></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
-                  <div class="electrode-map-wrap" id="electrodeMap"></div>
-                  <input class="search-input" type="search" id="channelSearch" placeholder="Search channel or group" />
-                  <label class="mini-field full">Sort
+                  <div class="ws-electrode-atlas" id="channelMapDetails"><div class="electrode-map-wrap" id="electrodeMap"></div></div>
+                  <input class="search-input" type="search" id="channelSearch" placeholder="Search channel or group" aria-label="Search channel or group" />
+                  <label class="ws-inline-field">Sort
                     <select id="channelSort">
                       <option value="file">File order</option>
                       <option value="group">Group</option>
@@ -240,13 +266,69 @@
                     </select>
                   </label>
                   <div class="selected-card" id="selectedCard">No channel selected</div>
-                  <div class="action-row">
-                    <button id="soloBtn">Solo</button>
-                    <button id="pinBtn">Pin</button>
-                    <button id="hideBtn">Hide</button>
+                  <div class="action-row ws-channel-actions">
+                    <button id="soloBtn" type="button" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/><circle cx="10" cy="10" r="2"/></svg>Solo</button>
+                    <button id="pinBtn" type="button" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3h6l-1 6 3 3H5l3-3-1-6m3 9v5"/></svg>Pin</button>
+                    <button id="hideBtn" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3l14 14M7 5a9 9 0 0 1 10 5 12 12 0 0 1-3 3M4 7l-1 3a9 9 0 0 0 9 5"/></svg>Hide</button>
                   </div>
                   <button class="wide-btn ghost" id="clearFocusBtn">Clear focus</button>
-                  <div class="ws-legend-well"><div class="legend" id="legend"></div></div>
+                  <div class="ws-sub-label">Channel groups</div><div class="ws-legend-well"><div class="legend" id="legend"></div></div>
+                </div></div>
+              </section>
+
+              <section class="ws-section" data-ws-section="similarity" data-ws-default="collapsed" id="similarityPanel">
+                <button class="ws-toggle" type="button" aria-expanded="true">
+                  <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Find similar</span>
+                  <span class="ws-meta" id="similarModuleMeta">Shape search</span>
+                  <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="ws-body"><div class="ws-body-inner">
+                  <div id="similarReference" class="similar-reference"></div>
+                  <details class="similar-disclosure" id="similarTemplateEditor" open>
+                    <summary><span>Reference window</span><span class="similar-summary-value" id="similarWindowLabel">0–1 s</span></summary>
+                    <div class="similar-editor">
+                      <div class="similar-capture-actions">
+                        <button id="similarSelect" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4M6 10h8"/></svg>Select on waveform</button>
+                        <button id="similarCapture" type="button" title="Use the measured selection or current view">Use selection<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5"/></svg></button>
+                      </div>
+                      <label class="similar-field">Reference channel<select id="similarChannel"></select></label>
+                      <div class="similar-time-inputs">
+                        <label class="similar-field">Start <span class="similar-input-unit"><input id="similarStart" aria-label="Start (s)" type="number" min="0" step="0.001" value="0" /><span>s</span></span></label>
+                        <span class="similar-time-arrow" aria-hidden="true">→</span>
+                        <label class="similar-field">End <span class="similar-input-unit"><input id="similarEnd" aria-label="End (s)" type="number" min="0" step="0.001" value="1" /><span>s</span></span></label>
+                      </div>
+                    </div>
+                  </details>
+                  <details class="similar-disclosure" id="similarOptions">
+                    <summary><span>Search settings</span><span class="similar-summary-value" id="similarScopeLabel">Same channel</span></summary>
+                    <div class="similar-editor">
+                      <label class="similar-field">Signal source<select id="similarSource"><option value="processed">Current processing</option><option value="raw">Original unprocessed</option></select></label>
+                      <p class="similar-processing" id="similarProcessing"></p>
+                      <label class="similar-field">Matching method<select id="similarMethod"><option value="elastic">Elastic morphology</option><option value="correlation">Strict correlation</option></select></label>
+                      <label class="similar-field">Window duration<select id="similarDuration"><option value="0.2">Nearby durations · 0.8× / 1× / 1.2×</option><option value="0">Exact reference duration</option></select></label>
+                      <label class="similar-field">Results<select id="similarRetrieval"><option value="nearest">Closest candidates · review queue</option><option value="threshold">Only above score threshold</option></select></label>
+                      <label class="similar-field">Channels<select id="similarScope"><option value="channel">Reference channel</option><option value="all">All source channels</option></select></label>
+                      <label class="similar-field">Search range<select id="similarRange"><option value="full">Full recording</option><option value="current">Current view</option></select></label>
+                      <label class="similar-threshold" for="similarThreshold"><span>Score guide<small>Uncalibrated · not diagnostic confidence</small></span><input id="similarThreshold" type="number" min="0.1" max="1" step="0.05" value="0.65" /></label>
+                      <label class="similar-switch"><span>Include inverted shapes</span><input id="similarPolarity" type="checkbox" role="switch" /><span class="similar-switch-track" aria-hidden="true"></span></label>
+                    </div>
+                  </details>
+                  <div class="similar-search-actions">
+                    <button id="similarSearch" class="similar-primary" type="button"><span id="similarSearchLabel">Find similar waveforms</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5"/></svg></button>
+                    <button id="similarStop" class="similar-stop hidden" type="button" aria-label="Stop search" title="Stop search"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1"/></svg></button>
+                  </div>
+                  <p id="similarStatus" class="similar-status" role="status" aria-live="polite"></p>
+                  <label class="similar-field similar-history">Session evidence<select id="similarHistory" aria-label="Search history" disabled></select><small>Shared with Agent · export before switching recordings or reloading</small></label>
+                  <p id="similarViewNotice" class="similar-view-notice hidden" role="status"></p>
+                  <div id="similarReview" class="similar-review hidden">
+                    <div class="similar-review-head"><h3>Candidates <span id="similarMatchCount"></span></h3><button id="similarResetFeedback" class="similar-text-button hidden" type="button" title="Restore the original ranking">Reset feedback</button></div>
+                    <div class="similar-review-tools"><button id="similarOpenReference" type="button">Revisit reference</button><button id="similarExportReview" type="button" title="Download local review JSON; may contain sensitive channel labels and notes">Export review</button></div>
+                    <p class="similar-review-guidance">Review shape, duration, surrounding background and simultaneous channels. Check artifacts and normal variants before interpretation.</p>
+                    <div class="similar-legend"><span><i></i>Candidate</span><span><i></i>Reference</span><span>Normalized</span></div>
+                    <p id="similarFeedbackSummary" class="similar-feedback-summary" aria-live="polite"></p>
+                    <div id="similarResults" class="similar-results"></div>
+                  </div>
+                  <details class="similar-method"><summary>About this search</summary><p>Assisted retrieval, not an epileptiform-discharge or seizure diagnosis. Current processing uses native-rate filter, reference and difference settings. Gain and positive affine scaling do not change normalized shape; the search does not use screenshot pixels or decimated envelopes.</p><p>Elastic morphology adds voltage/slope DTW evidence (±5% local alignment) without demoting strict-correlation matches. Nearby durations searches 0.8×, 1× and 1.2× reference length where valid, not every duration. 128-point refinement; bounded candidate pool, not exhaustive DTW. Closest candidates may all be below the score guide. A candidate is not a confirmed finding; an empty search cannot rule out abnormal activity.</p><p>Results keep their original processing recipe when you change the view. Open restores that recipe with at least 2 s of surrounding context on each side where available. Review shape and background, asymmetry, slow components and spatial field; scalp criteria must not be automatically applied to intracranial contacts.</p><p>Feedback is session-only until you export it. Export contains channel labels, time ranges and review notes; treat it as sensitive. No clinical events are automatically written.</p></details>
                 </div></div>
               </section>
 
@@ -256,37 +338,37 @@
                     <b id="analysisTitle">Channel</b>
                     <span id="analysisSub">Spectrum</span>
                   </div>
-                  <div class="seg-mini" id="analysisTabs">
-                    <button data-mode="spectrum" class="active">FFT</button>
-                    <button data-mode="spectrogram">Time-freq</button>
+                  <div class="seg-mini" id="analysisTabs" role="group" aria-label="Analysis view">
+                    <button type="button" data-mode="spectrum" class="active" aria-pressed="true">FFT</button>
+                    <button type="button" data-mode="spectrogram" aria-pressed="false">Time-freq</button>
                   </div>
-                  <button class="panel-close" id="analysisClose" title="Hide analysis panel">×</button>
+                  <button class="panel-close" id="analysisClose" title="Hide analysis panel" aria-label="Close analysis">×</button>
                 </div>
                 <canvas id="analysisCanvas"></canvas>
                 <div class="band-bars" id="bandBars"></div>
                 <div class="measure-grid" id="measureStats"></div>
               </section>
 
-              <section class="ws-section" data-ws-section="interaction" data-ws-default="collapsed">
+              <section class="ws-section" data-ws-section="interaction" data-ws-default="collapsed" id="interactionPanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Interaction</span>
                   <span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
-                  <label class="switch-row">
-                    <span>Measure drag</span>
-                    <input type="checkbox" id="measureToggle" />
+                  <label class="switch-row ws-mode-row">
+                    <span><b>Measure drag</b><small>Inspect a time interval</small></span>
+                    <input type="checkbox" id="measureToggle" role="switch" aria-label="Measure drag" />
                   </label>
-                  <label class="switch-row">
-                    <span>Drag events</span>
-                    <input type="checkbox" id="markerToggle" />
+                  <label class="switch-row ws-mode-row">
+                    <span><b>Drag events</b><small>Annotate a point or interval</small></span>
+                    <input type="checkbox" id="markerToggle" role="switch" aria-label="Drag events" />
                   </label>
-                  <button class="wide-btn" id="addMarkerBtn">Add point at center</button>
+                  <button class="wide-btn ws-add-point" id="addMarkerBtn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>Add point at center</button>
                 </div></div>
               </section>
 
-              <section class="ws-section" data-ws-section="events" data-ws-default="collapsed">
+              <section class="ws-section" data-ws-section="events" data-ws-default="collapsed" id="eventsPanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">Events</span>
                   <span class="ws-count" data-ws-count></span>
@@ -297,14 +379,15 @@
                 </div></div>
               </section>
 
-              <section class="ws-section" data-ws-section="file" data-ws-default="collapsed">
+              <section class="ws-section" data-ws-section="file" data-ws-default="collapsed" id="filePanel">
                 <button class="ws-toggle" type="button" aria-expanded="true">
                   <span class="ws-dot" aria-hidden="true"></span><span class="ws-title">File</span>
                   <span class="ws-meta" data-ws-meta></span>
                   <svg class="ws-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="ws-body"><div class="ws-body-inner">
-                  <div class="attr-list" id="attrList"></div>
+                  <div id="fileReadout" class="ws-file-readout"></div>
+                  <details class="ws-drawer" open><summary>Recording metadata</summary><div class="attr-list" id="attrList"></div></details>
                 </div></div>
               </section>
             </div>

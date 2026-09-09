@@ -11,6 +11,7 @@ export function initNormalization(ctx) {
   function renderFormula(method) {
     const m = NORM_METHODS[method] || NORM_METHODS.none;
     $("formulaCard").innerHTML = m.formula(viewer.normOpts);
+    $("normUnitLabel").textContent = m.unit || "Scaled";
   }
 
   function renderParams(method) {
@@ -23,19 +24,22 @@ export function initNormalization(ctx) {
     if (spec.type === "mmRange") {
       wrap.innerHTML =
         `<div class="prow"><span class="plabel">Output range</span>` +
-        `<div class="seg-mini" id="mmSeg">` +
-        `<button data-r="sym" class="${viewer.normOpts.mmRange === "sym" ? "active" : ""}">[−1, 1]</button>` +
-        `<button data-r="unit" class="${viewer.normOpts.mmRange === "unit" ? "active" : ""}">[0, 1]</button>` +
+        `<div class="seg-mini" id="mmSeg" role="group" aria-label="Output range">` +
+        `<button type="button" data-r="sym" aria-pressed="${viewer.normOpts.mmRange === "sym"}" class="${viewer.normOpts.mmRange === "sym" ? "active" : ""}">[−1, 1]</button>` +
+        `<button type="button" data-r="unit" aria-pressed="${viewer.normOpts.mmRange === "unit"}" class="${viewer.normOpts.mmRange === "unit" ? "active" : ""}">[0, 1]</button>` +
         `</div></div>`;
       wrap.querySelectorAll("#mmSeg button").forEach((b) => b.addEventListener("click", () => {
         viewer.setNormOpts({ mmRange: b.dataset.r });
-        wrap.querySelectorAll("#mmSeg button").forEach((x) => x.classList.toggle("active", x === b));
+        wrap.querySelectorAll("#mmSeg button").forEach((x) => {
+          x.classList.toggle("active", x === b);
+          x.setAttribute("aria-pressed", String(x === b));
+        });
         renderFormula(method);
       }));
     } else if (spec.type === "robust") {
       const lo = viewer.normOpts.robLow;
       wrap.innerHTML =
-        `<div class="prow"><span class="plabel">Percentile band</span>` +
+        `<div class="prow"><label class="plabel" for="robRange">Percentile band</label>` +
         `<span class="pval" id="robVal">Q${lo}–Q${100 - lo}</span></div>` +
         `<input type="range" id="robRange" min="5" max="45" step="5" value="${lo}" />`;
       wrap.querySelector("#robRange").addEventListener("input", (e) => {
@@ -62,7 +66,10 @@ export function initNormalization(ctx) {
   function syncNorm(method) {
     currentNorm = method;
     $("normCurrent").textContent = (NORM_METHODS[method] || NORM_METHODS.none).label;
-    document.querySelectorAll("#normMenu .dd-item").forEach((b) => b.classList.toggle("active", b.dataset.m === method));
+    document.querySelectorAll("#normMenu .dd-item").forEach((b) => {
+      b.classList.toggle("active", b.dataset.m === method);
+      b.setAttribute("aria-selected", String(b.dataset.m === method));
+    });
     renderFormula(method);
     renderParams(method);
     $("normHint").textContent = (NORM_METHODS[method] || NORM_METHODS.none).desc;
@@ -71,6 +78,9 @@ export function initNormalization(ctx) {
   $("normTrigger").addEventListener("click", (e) => {
     e.stopPropagation();
     openNormMenu(!$("normMenu").classList.contains("open"));
+  });
+  $("normDropdown").addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { openNormMenu(false); $("normTrigger").focus(); }
   });
   document.querySelectorAll("#normMenu .dd-item").forEach((b) => {
     b.addEventListener("click", () => { setNorm(b.dataset.m); openNormMenu(false); });

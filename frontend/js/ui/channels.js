@@ -3,6 +3,7 @@ import { renderElectrodeMap } from "./electrode-map.js";
 // hide), analysis toggles, structured event editor, file metadata, channel summary.
 
 import { $, escapeHtml } from "../core/util.js";
+import { recordingReadout } from "./workspace-presentation.js";
 
 const ATTR_LABELS = {
   edf_stem: "source", window_index: "window #", window_start_sec: "start (s)",
@@ -25,7 +26,8 @@ export function initChannels(ctx) {
       // (per-channel SD, which is what "how hot is this contact" means here).
       values: (viewer.channelMeta || []).map((meta) => Number(meta?.std) || 0),
       selected: viewer.selectedChannel,
-      hidden: viewer.hiddenChannels || new Set(),
+      hidden: new Set((viewer.channelMeta || []).flatMap((meta, i) =>
+        viewer.hiddenChannels?.has(i) || viewer.hiddenGroups?.has(meta.group) ? [i] : [])),
       onSelect: (index) => viewer.selectChannel(index, true),
     });
   }
@@ -37,16 +39,25 @@ export function initChannels(ctx) {
     const wrap = $("legend"); wrap.innerHTML = "";
     Object.keys(counts).forEach((g) => {
       const color = viewer.groupColor.get(g);
-      const row = document.createElement("div");
+      const row = document.createElement("button");
+      row.type = "button";
+      row.dataset.group = g;
+      row.setAttribute("aria-label", `Show group ${g}`);
+      row.setAttribute("aria-pressed", String(!viewer.hiddenGroups.has(g)));
       row.className = "item";
+      row.classList.toggle("off", viewer.hiddenGroups.has(g));
       row.innerHTML = `<span class="swatch" style="background:${color}"></span>` +
         `<span class="name">${escapeHtml(g)}</span><span class="count">${counts[g]}</span>`;
-      row.addEventListener("click", () => { viewer.toggleGroup(g); row.classList.toggle("off"); });
+      row.addEventListener("click", () => { viewer.toggleGroup(g); });
       wrap.appendChild(row);
     });
   }
 
   function buildAttrs(header) {
+    const info = recordingReadout(header);
+    $("fileReadout").innerHTML = `<div class="ws-specimen-head"><span>Source recording</span><span>${escapeHtml(info.format)}</span></div>
+      <b class="ws-file-name">${escapeHtml(info.file)}</b><div class="ws-file-stats">
+      <div><span>${escapeHtml(info.channels)}</span><small>channels</small></div><div><span>${escapeHtml(info.rate)}</span><small>sample rate</small></div><div><span>${escapeHtml(info.duration)}</span><small>duration</small></div></div>`;
     const wrap = $("attrList"); wrap.innerHTML = "";
     const a = header.attrs || {};
     const keys = Object.keys(ATTR_LABELS).filter((k) => a[k] !== undefined && a[k] !== "");
@@ -63,28 +74,32 @@ export function initChannels(ctx) {
       row.innerHTML = `<span>${escapeHtml(ATTR_LABELS[k] || k)}</span><span>${escapeHtml(String(v))}</span>`;
       wrap.appendChild(row);
     });
+    if (!wrap.children.length) wrap.innerHTML = '<p class="ws-caption">No additional metadata supplied.</p>';
   }
 
   let focusedEventId = null;
 
   function renderEvents(events) {
     const wrap = $("markerList");
-    if (!events.length) { wrap.innerHTML = `<span>No events yet</span>`; return; }
+    if (!events.length) {
+      wrap.innerHTML = `<div class="ws-empty-state"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M2 18h28M8 6v12m16-8v8M8 6h8v6H8"/><circle cx="24" cy="7" r="2"/></svg><b>No events yet</b><p>Use Drag events to mark an interval, or add a point from Interaction.</p></div>`;
+      return;
+    }
     wrap.innerHTML = "";
-    events.forEach((event) => {
+    events.forEach((event, index) => {
       const row = document.createElement("div");
       row.className = `marker-row${String(event.id) === String(focusedEventId) ? " editing" : ""}`;
       row.dataset.eventId = event.id;
       row.innerHTML = `
         <div class="event-main">
-          <span class="event-type">${escapeHtml(event.type)}</span>
+          <div class="ws-event-heading"><span class="ws-event-index">${String(index + 1).padStart(2, "0")}</span><span class="event-type">${escapeHtml(event.type)}</span></div>
           <input class="event-label" aria-label="Event label" value="${escapeHtml(event.label)}" />
           <div class="event-times">
             <label>ONSET<input class="event-onset" type="number" min="0" step="0.001" value="${event.onsetSec.toFixed(3)}" /></label>
             <label>OFFSET<input class="event-offset" type="number" min="0" step="0.001" placeholder="point" value="${event.offsetSec == null ? "" : event.offsetSec.toFixed(3)}" /></label>
           </div>
         </div>
-        <button class="event-delete" data-id="${event.id}" title="Delete event">×</button>`;
+        <button class="event-delete" data-id="${event.id}" title="Delete event" aria-label="Delete event ${escapeHtml(event.label)}">×</button>`;
       const commit = () => viewer.updateEvent(event.id, {
         label: row.querySelector(".event-label").value,
         onsetSec: row.querySelector(".event-onset").value,
@@ -124,9 +139,21 @@ export function initChannels(ctx) {
     if (state.montage) parts.push(state.montageLabel || "montage");
     if (state.hidden) parts.push(`${state.hidden} hidden`);
     $("chCount").textContent = parts.join(" · ");
+    $("soloBtn").setAttribute("aria-pressed", String(viewer.selectedChannel != null && viewer.soloChannel === viewer.selectedChannel));
+    $("pinBtn").setAttribute("aria-pressed", String(viewer.selectedChannel != null && viewer.pinnedChannel === viewer.selectedChannel));
+    $("legend").querySelectorAll("[data-group]").forEach((row) => {
+      const visible = !viewer.hiddenGroups.has(row.dataset.group);
+      row.classList.toggle("off", !visible);
+      row.setAttribute("aria-pressed", String(visible));
+    });
   }
 
   // ---- channel tools wiring ----
+  let mapWidth = 0;
+  new ResizeObserver(([entry]) => {
+    const width = Math.round(entry.contentRect.width);
+    if (width > 0 && width !== mapWidth) { mapWidth = width; drawElectrodeMap(); }
+  }).observe($("channelMapDetails"));
   $("channelSearch").addEventListener("input", (e) => viewer.setChannelSearch(e.target.value));
   $("channelSort").addEventListener("change", (e) => viewer.setChannelSort(e.target.value));
   $("soloBtn").addEventListener("click", () => viewer.toggleSoloSelected());

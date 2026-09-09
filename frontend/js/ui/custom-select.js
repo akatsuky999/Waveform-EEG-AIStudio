@@ -32,6 +32,9 @@ export function enhanceSelect(select) {
   trigger.className = "dd-trigger cs-trigger";
   trigger.setAttribute("aria-haspopup", "listbox");
   trigger.setAttribute("aria-expanded", "false");
+  for (const attribute of ["aria-label", "aria-labelledby", "aria-describedby"]) {
+    if (select.hasAttribute(attribute)) trigger.setAttribute(attribute, select.getAttribute(attribute));
+  }
   trigger.innerHTML = `<span class="cs-label"></span>${CHEV}`;
   const labelEl = trigger.querySelector(".cs-label");
 
@@ -57,6 +60,7 @@ export function enhanceSelect(select) {
   }
 
   function rebuild() {
+    trigger.disabled = select.disabled;
     menu.innerHTML = "";
     for (const node of select.children) {
       if (node.tagName === "OPTGROUP") {
@@ -82,6 +86,7 @@ export function enhanceSelect(select) {
   }
 
   function choose(value) {
+    if (select.disabled) return;
     if (select.value !== value) {
       select.value = value; // triggers syncActive via the intercepted setter below
       select.dispatchEvent(new Event("input", { bubbles: true }));
@@ -141,7 +146,7 @@ export function enhanceSelect(select) {
     set(v) { NATIVE_VALUE.set.call(this, v); syncActive(); },
   });
   select.addEventListener("change", syncActive);
-  new MutationObserver(() => rebuild()).observe(select, { childList: true, subtree: true });
+  new MutationObserver(() => rebuild()).observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
 
   rebuild();
 }

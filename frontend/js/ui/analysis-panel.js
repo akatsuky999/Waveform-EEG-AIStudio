@@ -23,8 +23,10 @@ export function initAnalysisPanel(ctx) {
     }
     const freq = analysis.stats?.freq;
     $("selectedCard").innerHTML =
-      `<b>${escapeHtml(analysis.label)}</b>` +
-      `${escapeHtml(analysis.group)} · <span class="accent">${Number.isFinite(freq) ? fmtFreq(freq) + " Hz" : "—"}</span>`;
+      `<div class="ws-specimen-head"><span>Selected channel</span><span>${escapeHtml(analysis.group)}</span></div>` +
+      `<div class="ws-selection-reading"><b>${escapeHtml(analysis.label)}</b><span class="accent" title="Dominant frequency">${Number.isFinite(freq) ? fmtFreq(freq) + " Hz" : "—"}</span></div>`;
+    $("soloBtn").setAttribute("aria-pressed", String(viewer.soloChannel === viewer.selectedChannel));
+    $("pinBtn").setAttribute("aria-pressed", String(viewer.pinnedChannel === viewer.selectedChannel));
     renderAnalysis(analysis);
   }
 
@@ -42,6 +44,7 @@ export function initAnalysisPanel(ctx) {
     analysisOpen = !!open;
     $("analysisPanel").classList.toggle("hidden", !analysisOpen);
     $("analysisBtn").classList.toggle("active", analysisOpen);
+    $("analysisBtn").setAttribute("aria-pressed", String(analysisOpen));
     if (analysisOpen) {
       ctx.setSidebarActive?.("controls");
       renderAnalysis(viewer.getSelectedAnalysis());
@@ -52,7 +55,10 @@ export function initAnalysisPanel(ctx) {
   function setAnalysisMode(mode) {
     if (!["spectrum", "spectrogram"].includes(mode)) return;
     analysisMode = mode;
-    document.querySelectorAll("#analysisTabs button").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+    document.querySelectorAll("#analysisTabs button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === mode);
+      b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+    });
     renderAnalysis(viewer.getSelectedAnalysis());
   }
 
@@ -117,6 +123,9 @@ export function initAnalysisPanel(ctx) {
   $("analysisClose").addEventListener("click", () => setAnalysisOpen(false));
   document.querySelectorAll("#analysisTabs button").forEach((b) =>
     b.addEventListener("click", () => setAnalysisMode(b.dataset.mode)));
+  new ResizeObserver(() => {
+    if (analysisOpen) renderAnalysis(viewer.getSelectedAnalysis());
+  }).observe($("analysisCanvas"));
 
   ctx.renderSelected = renderSelected;
   ctx.renderAnalysis = renderAnalysis;
